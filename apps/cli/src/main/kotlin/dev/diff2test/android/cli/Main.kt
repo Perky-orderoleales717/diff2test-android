@@ -9,6 +9,7 @@ import dev.diff2test.android.core.ChangedSymbol
 import dev.diff2test.android.core.GradleRunRequest
 import dev.diff2test.android.core.SymbolKind
 import dev.diff2test.android.core.TestPlan
+import dev.diff2test.android.core.ViewModelAnalysis
 import dev.diff2test.android.gradlerunner.JvmGradleRunner
 import dev.diff2test.android.kotlinanalyzer.StubViewModelAnalyzer
 import dev.diff2test.android.policy.DefaultPolicyEngine
@@ -36,8 +37,20 @@ private fun runScan() {
     val changeSet = GitDiffChangeDetector().scan()
     println("Source: ${changeSet.source}")
     println("Base: ${changeSet.baseRef}")
-    println("Head: ${changeSet.headRef}")
+    println("Head: ${changeSet.headRef ?: "(working tree)"}")
     println("Summary: ${changeSet.summary}")
+
+    if (changeSet.files.isNotEmpty()) {
+        println("Files:")
+        changeSet.files.forEach { file ->
+            println("- ${file.path}")
+            println("  hunks: ${file.hunks.size}")
+            if (file.changedSymbols.isNotEmpty()) {
+                val symbols = file.changedSymbols.joinToString { "${it.kind}:${it.name}" }
+                println("  symbols: $symbols")
+            }
+        }
+    }
 }
 
 private fun runPlan(target: String?) {
@@ -89,9 +102,26 @@ private fun createPlan(target: String?): TestPlan {
     return DefaultTestPlanner().plan(analysis, context, testType)
 }
 
-private fun buildAnalysisInput(target: String?): List<dev.diff2test.android.core.ViewModelAnalysis> {
-    val path = Path.of(target ?: "app/src/main/java/com/example/LoginViewModel.kt")
-    val changeSet = ChangeSet(
+private fun buildAnalysisInput(target: String?): List<ViewModelAnalysis> {
+    if (target != null) {
+        val analyses = StubViewModelAnalyzer().analyze(syntheticChangeSet(target))
+        check(analyses.isNotEmpty()) {
+            "The current stub analyzer expects a path ending with ViewModel.kt."
+        }
+        return analyses
+    }
+
+    val detectedAnalyses = StubViewModelAnalyzer().analyze(GitDiffChangeDetector().scan())
+    if (detectedAnalyses.isNotEmpty()) {
+        return detectedAnalyses
+    }
+
+    return StubViewModelAnalyzer().analyze(syntheticChangeSet("app/src/main/java/com/example/LoginViewModel.kt"))
+}
+
+private fun syntheticChangeSet(target: String): ChangeSet {
+    val path = Path.of(target)
+    return ChangeSet(
         source = ChangeSource.GIT_DIFF,
         files = listOf(
             ChangedFile(
@@ -107,7 +137,6 @@ private fun buildAnalysisInput(target: String?): List<dev.diff2test.android.core
         ),
         summary = "Synthetic change set for CLI bootstrap.",
     )
-    return StubViewModelAnalyzer().analyze(changeSet)
 }
 
 private fun renderPlan(plan: TestPlan): String {
@@ -130,4 +159,3 @@ private fun printHelp() {
     println("  generate [path-to-viewmodel]")
     println("  verify [gradle-task]")
 }
-
