@@ -1,0 +1,337 @@
+package dev.diff2test.android.testgenerator
+
+import dev.diff2test.android.core.GeneratedFile
+import dev.diff2test.android.core.GeneratedTestBundle
+import dev.diff2test.android.core.TestContext
+import dev.diff2test.android.core.TestPlan
+import dev.diff2test.android.core.ViewModelAnalysis
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.Duration
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+
+data class OpenAiResponsesConfig(
+    val apiKey: String,
+    val model: String,
+    val baseUrl: String,
+)
+
+fun openAiResponsesConfigFromEnvironment(modelOverride: String? = null): OpenAiResponsesConfig? {
+    val apiKey = System.getenv("OPENAI_API_KEY")?.trim().orEmpty()
+    if (apiKey.isBlank()) {
+        return null
+    }
+
+    val model = modelOverride
+        ?: System.getenv("D2T_OPENAI_MODEL")
+        ?: System.getenv("OPENAI_MODEL")
+        ?: "gpt-5"
+    val baseUrl = System.getenv("D2T_OPENAI_BASE_URL")
+        ?: System.getenv("OPENAI_BASE_URL")
+        ?: "https://api.openai.com/v1"
+
+    return OpenAiResponsesConfig(
+        apiKey = apiKey,
+        model = model,
+        baseUrl = baseUrl.removeSuffix("/"),
+    )
+}
+
+class OpenAiResponsesTestGenerator(
+    private val config: OpenAiResponsesConfig,
+    private val fallback: TestGenerator = KotlinUnitTestGenerator(),
+    private val httpClient: HttpClient = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(30))
+        .build(),
+) : TestGenerator {
+    override fun generate(
+        plan: TestPlan,
+        context: TestContext,
+        analysis: ViewModelAnalysis,
+    ): GeneratedTestBundle {
+        return try {
+            val promptSpec = buildPromptSpec(plan, context, analysis)
+            val requestBody = buildResponsesRequest(promptSpec.instructions, promptSpec.input)
+            val responseBody = executeResponsesRequest(requestBody)
+            val payload = extractStructuredPayload(responseBody)
+
+            GeneratedTestBundle(
+                plan = plan,
+                files = listOf(
+                    GeneratedFile(
+                        relativePath = generatedTestRelativePath(plan, analysis),
+                        content = sanitizeGeneratedKotlin(payload.content),
+                    ),
+                ),
+                warnings = payload.warnings,
+            )
+        } catch (error: Exception) {
+            val fallbackBundle = fallback.generate(plan, context, analysis)
+            fallbackBundle.copy(
+                warnings = listOf(
+                    "AI generation failed: ${error.message ?: error::class.simpleName}. Falling back to heuristic generation.",
+                ) + fallbackBundle.warnings,
+            )
+        }
+    }
+
+    private fun buildResponsesRequest(instructions: String, input: String): String {
+        val schema = buildJsonObject {
+            put("type", "object")
+            put(
+                "properties",
+                buildJsonObject {
+                    put(
+                        "content",
+                        buildJsonObject {
+                            put("type", "string")
+                            put("minLength", 1)
+                        },
+                    )
+                    put(
+                        "warnings",
+                        buildJsonObject {
+                            put("type", "array")
+                            put(
+                                "items",
+                                buildJsonObject {
+                                    put("type", "string")
+                                },
+                            )
+                        },
+                    )
+                },
+            )
+            put(
+                "required",
+                buildJsonArray {
+                    add(JsonPrimitive("content"))
+                    add(JsonPrimitive("warnings"))
+                },
+            )
+            put("additionalProperties", false)
+        }
+
+        return buildJsonObject {
+            put("model", config.model)
+            put("store", false)
+            put("instructions", instructions)
+            put("input", input)
+            put(
+                "text",
+                buildJsonObject {
+                    put(
+                        "format",
+                        buildJsonObject {
+                            put("type", "json_schema")
+                            put("name", "generated_viewmodel_test")
+                            put("strict", true)
+                            put("schema", schema)
+                        },
+                    )
+                },
+            )
+        }.toString()
+    }
+
+    private fun executeResponsesRequest(requestBody: String): String {
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create("${config.baseUrl}/responses"))
+            .timeout(Duration.ofSeconds(90))
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer ${config.apiKey}")
+            .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+            .build()
+
+        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+        check(response.statusCode() in 200..299) {
+            "OpenAI Responses API request failed with HTTP ${response.statusCode()}: ${response.body()}"
+        }
+        return response.body()
+    }
+}
+
+internal data class AiPromptSpec(
+    val instructions: String,
+    val input: String,
+)
+
+internal data class StructuredTestPayload(
+    val content: String,
+    val warnings: List<String>,
+)
+
+internal fun buildPromptSpec(
+    plan: TestPlan,
+    context: TestContext,
+    analysis: ViewModelAnalysis,
+): AiPromptSpec {
+    val workspaceRoot = findWorkspaceRoot(analysis.filePath)
+    val promptFile = workspaceRoot.resolve("prompts/generator/generate-coroutine-viewmodel-tests.md")
+    val promptTemplate = if (Files.exists(promptFile)) {
+        Files.readString(promptFile).trim()
+    } else {
+        "Generate Kotlin tests from a TestPlan."
+    }
+    val sourceText = Files.readString(analysis.filePath)
+    val targetClassName = "${analysis.className}GeneratedTest"
+    val targetRelativePath = generatedTestRelativePath(plan, analysis)
+
+    val instructions = buildString {
+        appendLine(promptTemplate)
+        appendLine()
+        appendLine("You are generating a compile-ready Kotlin local unit test file for an Android ViewModel.")
+        appendLine("Return JSON only. Do not use markdown fences.")
+        appendLine("The JSON must contain `content` and `warnings`.")
+        appendLine("The `content` must be a full Kotlin file for `$targetClassName`.")
+        appendLine("Target file path: $targetRelativePath")
+        appendLine("Prefer constructor-injected fakes over Android runtime dependencies.")
+        appendLine("If information is missing, keep the code honest with TODO() or focused fake implementations instead of inventing APIs.")
+    }
+
+    val input = buildString {
+        appendLine("Generate a Kotlin test file for this ViewModel.")
+        appendLine()
+        appendLine("## Target")
+        appendLine("className: ${analysis.className}")
+        appendLine("packageName: ${analysis.packageName}")
+        appendLine("filePath: ${analysis.filePath}")
+        appendLine("generatedTestClass: $targetClassName")
+        appendLine("generatedRelativePath: $targetRelativePath")
+        appendLine()
+        appendLine("## TestPlan")
+        appendLine("testType: ${plan.testType}")
+        appendLine("riskLevel: ${plan.riskLevel}")
+        appendLine("targetMethods: ${plan.targetMethods.joinToString()}")
+        appendLine("scenarios:")
+        plan.scenarios.forEach { scenario ->
+            appendLine("- ${scenario.name}: ${scenario.goal} | expected=${scenario.expectedOutcome}")
+        }
+        appendLine()
+        appendLine("## StyleGuide")
+        appendLine("mockLibrary: ${context.styleGuide.mockLibrary}")
+        appendLine("assertionStyle: ${context.styleGuide.assertionStyle}")
+        appendLine("coroutineEntryPoint: ${context.styleGuide.coroutineEntryPoint}")
+        appendLine("flowProbe: ${context.styleGuide.flowProbe}")
+        appendLine("namingPattern: ${context.styleGuide.namingPattern}")
+        appendLine("existingPatterns:")
+        context.existingTestPatterns.forEach { pattern ->
+            appendLine("- $pattern")
+        }
+        appendLine()
+        appendLine("## Analysis")
+        appendLine("constructorDependencies:")
+        analysis.constructorDependencies.forEach { dependency ->
+            appendLine("- ${dependency.name}: ${dependency.type} (${dependency.role ?: "collaborator"})")
+        }
+        appendLine("stateHolders: ${analysis.stateHolders.joinToString()}")
+        appendLine("primaryStateHolderName: ${analysis.primaryStateHolderName}")
+        appendLine("primaryStateType: ${analysis.primaryStateType}")
+        appendLine("androidFrameworkTouchpoints: ${analysis.androidFrameworkTouchpoints.joinToString()}")
+        appendLine("notes:")
+        analysis.notes.forEach { note ->
+            appendLine("- $note")
+        }
+        appendLine("methods:")
+        analysis.publicMethods.forEach { method ->
+            appendLine("- ${method.signature}")
+            val methodBody = method.body
+            if (!methodBody.isNullOrBlank()) {
+                appendLine("  body:")
+                methodBody.lines().forEach { line ->
+                    appendLine("    $line")
+                }
+            }
+        }
+        appendLine()
+        appendLine("## Source")
+        appendLine("```kotlin")
+        appendLine(sourceText.trimEnd())
+        appendLine("```")
+        appendLine()
+        appendLine("## Output requirements")
+        appendLine("- use package `${analysis.packageName}`")
+        appendLine("- class name must be `$targetClassName`")
+        appendLine("- prefer `runTest` and `StandardTestDispatcher`")
+        appendLine("- assert observable state or event outcomes")
+        appendLine("- include at least one negative-path test if the source shows validation or failure handling")
+        appendLine("- do not emit placeholder `assertTrue(true)` tests")
+        appendLine("- do not emit markdown fences in `content`")
+    }
+
+    return AiPromptSpec(
+        instructions = instructions.trim(),
+        input = input.trim(),
+    )
+}
+
+internal fun extractStructuredPayload(responseBody: String): StructuredTestPayload {
+    val root = Json.parseToJsonElement(responseBody).jsonObject
+    val text = root["output_text"]?.jsonPrimitive?.contentOrNull
+        ?: root["output"]?.jsonArray?.firstNotNullOfOrNull(::extractOutputText)
+        ?: error("OpenAI response did not include output text.")
+
+    val payload = Json.parseToJsonElement(text).jsonObject
+    val content = payload["content"]?.jsonPrimitive?.contentOrNull
+        ?: error("Structured payload did not include `content`.")
+    val warnings = payload["warnings"]?.jsonArray
+        ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+        ?: emptyList()
+
+    return StructuredTestPayload(
+        content = sanitizeGeneratedKotlin(content),
+        warnings = warnings,
+    )
+}
+
+internal fun generatedTestRelativePath(plan: TestPlan, analysis: ViewModelAnalysis): Path {
+    val packageName = analysis.packageName.ifBlank { "dev.diff2test.android.generated" }
+    return Path.of(
+        "src/test/kotlin/" + packageName.replace('.', '/') + "/${plan.targetClass}GeneratedTest.kt",
+    )
+}
+
+private fun extractOutputText(item: kotlinx.serialization.json.JsonElement): String? {
+    val content = item.jsonObject["content"]?.jsonArray ?: return null
+    return content.firstNotNullOfOrNull { contentItem ->
+        contentItem.jsonObject["text"]?.jsonPrimitive?.contentOrNull
+    }
+}
+
+internal fun sanitizeGeneratedKotlin(content: String): String {
+    val trimmed = content.trim()
+    return if (trimmed.startsWith("```")) {
+        trimmed
+            .removePrefix("```kotlin")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+    } else {
+        trimmed
+    }
+}
+
+private fun findWorkspaceRoot(start: Path): Path {
+    var current: Path? = start.toAbsolutePath().normalize()
+
+    while (current != null) {
+        if (Files.exists(current.resolve("gradlew")) || Files.exists(current.resolve("settings.gradle.kts"))) {
+            return current
+        }
+        current = current.parent
+    }
+
+    return start.toAbsolutePath().normalize()
+}

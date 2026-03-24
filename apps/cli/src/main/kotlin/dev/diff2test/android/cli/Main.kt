@@ -19,7 +19,9 @@ import dev.diff2test.android.styleindex.DefaultStyleIndexer
 import dev.diff2test.android.testclassifier.DefaultTestClassifier
 import dev.diff2test.android.testgenerator.FileSystemGeneratedTestWriter
 import dev.diff2test.android.testgenerator.KotlinUnitTestGenerator
+import dev.diff2test.android.testgenerator.OpenAiResponsesTestGenerator
 import dev.diff2test.android.testgenerator.inferModuleRootFromTarget
+import dev.diff2test.android.testgenerator.openAiResponsesConfigFromEnvironment
 import dev.diff2test.android.testplanner.DefaultTestPlanner
 import java.nio.file.Files
 import java.nio.file.Path
@@ -29,7 +31,7 @@ fun main(args: Array<String>) {
         "scan" -> runScan()
         "plan" -> runPlan(args.getOrNull(1))
         "generate" -> runGenerate(parseGenerateArguments(args.drop(1)))
-        "auto" -> runAuto()
+        "auto" -> runAuto(parseAutoArguments(args.drop(1)))
         "verify" -> runVerify(args.getOrNull(1))
         null, "help", "--help", "-h" -> printHelp()
         else -> {
@@ -73,7 +75,8 @@ private fun runPlan(target: String?) {
 
 private fun runGenerate(options: GenerateOptions) {
     val analysis = resolveAnalysis(options.target)
-    val bundle = createBundle(analysis)
+    val generator = createGenerator(options.aiPreference, options.model)
+    val bundle = createBundle(analysis, generator)
 
     if (options.write) {
         writeGeneratedFiles(bundle, analysis.filePath, options.outputRoot)
@@ -82,14 +85,15 @@ private fun runGenerate(options: GenerateOptions) {
     }
 }
 
-private fun runAuto() {
+private fun runAuto(options: AutoOptions) {
     val analyses = resolveChangedAnalyses()
     check(analyses.isNotEmpty()) {
         "No changed ViewModel files were detected in the current diff."
     }
+    val generator = createGenerator(options.aiPreference, options.model)
 
     analyses.forEach { analysis ->
-        val bundle = createBundle(analysis)
+        val bundle = createBundle(analysis, generator)
         println("Generating tests for ${analysis.filePath}")
         writeGeneratedFiles(bundle, analysis.filePath, outputRootOverride = null)
         println()
@@ -121,11 +125,14 @@ private fun createPlan(analysis: ViewModelAnalysis): TestPlan {
     return DefaultTestPlanner().plan(analysis, context, testType)
 }
 
-private fun createBundle(analysis: ViewModelAnalysis): GeneratedTestBundle {
+private fun createBundle(
+    analysis: ViewModelAnalysis,
+    generator: dev.diff2test.android.testgenerator.TestGenerator = KotlinUnitTestGenerator(),
+): GeneratedTestBundle {
     val plan = createPlan(analysis)
     val styleGuide = DefaultStyleIndexer().index(workspaceRoot)
     val context = DefaultTestContextBuilder().build("app", analysis, styleGuide)
-    return KotlinUnitTestGenerator().generate(plan, context, analysis)
+    return generator.generate(plan, context, analysis)
 }
 
 private fun resolveAnalysis(target: String?): ViewModelAnalysis {
@@ -239,17 +246,39 @@ private data class GenerateOptions(
     val target: String?,
     val write: Boolean,
     val outputRoot: String?,
+    val aiPreference: AiPreference,
+    val model: String?,
 )
+
+private data class AutoOptions(
+    val aiPreference: AiPreference,
+    val model: String?,
+)
+
+private enum class AiPreference {
+    AUTO,
+    ENABLED,
+    DISABLED,
+}
 
 private fun parseGenerateArguments(arguments: List<String>): GenerateOptions {
     var target: String? = null
     var write = false
     var outputRoot: String? = null
+    var aiPreference = AiPreference.AUTO
+    var model: String? = null
     var index = 0
 
     while (index < arguments.size) {
         when (val argument = arguments[index]) {
             "--write" -> write = true
+            "--ai" -> aiPreference = AiPreference.ENABLED
+            "--no-ai" -> aiPreference = AiPreference.DISABLED
+            "--model" -> {
+                model = arguments.getOrNull(index + 1)
+                    ?: error("--model requires a model value")
+                index += 1
+            }
             "--output-root" -> {
                 outputRoot = arguments.getOrNull(index + 1)
                     ?: error("--output-root requires a path value")
@@ -268,14 +297,73 @@ private fun parseGenerateArguments(arguments: List<String>): GenerateOptions {
         target = target,
         write = write,
         outputRoot = outputRoot,
+        aiPreference = aiPreference,
+        model = model,
     )
+}
+
+private fun parseAutoArguments(arguments: List<String>): AutoOptions {
+    var aiPreference = AiPreference.AUTO
+    var model: String? = null
+    var index = 0
+
+    while (index < arguments.size) {
+        when (arguments[index]) {
+            "--ai" -> aiPreference = AiPreference.ENABLED
+            "--no-ai" -> aiPreference = AiPreference.DISABLED
+            "--model" -> {
+                model = arguments.getOrNull(index + 1)
+                    ?: error("--model requires a model value")
+                index += 1
+            }
+
+            else -> error("Unknown auto option: ${arguments[index]}")
+        }
+        index += 1
+    }
+
+    return AutoOptions(
+        aiPreference = aiPreference,
+        model = model,
+    )
+}
+
+private fun createGenerator(
+    aiPreference: AiPreference,
+    modelOverride: String?,
+): dev.diff2test.android.testgenerator.TestGenerator {
+    val config = openAiResponsesConfigFromEnvironment(modelOverride)
+
+    return when (aiPreference) {
+        AiPreference.ENABLED -> {
+            check(config != null) {
+                "--ai requires OPENAI_API_KEY to be set."
+            }
+            println("Using OpenAI test generator (${config.model})")
+            OpenAiResponsesTestGenerator(config)
+        }
+
+        AiPreference.DISABLED -> KotlinUnitTestGenerator()
+        AiPreference.AUTO -> {
+            if (config != null) {
+                println("Using OpenAI test generator (${config.model})")
+                OpenAiResponsesTestGenerator(config)
+            } else {
+                KotlinUnitTestGenerator()
+            }
+        }
+    }
 }
 
 private fun printHelp() {
     println("d2t commands:")
     println("  scan")
     println("  plan [path-to-viewmodel]")
-    println("  generate [path-to-viewmodel] [--write] [--output-root path]")
-    println("  auto")
+    println("  generate [path-to-viewmodel] [--write] [--output-root path] [--ai|--no-ai] [--model model-name]")
+    println("  auto [--ai|--no-ai] [--model model-name]")
     println("  verify [gradle-task]")
+    println("Environment:")
+    println("  OPENAI_API_KEY")
+    println("  D2T_OPENAI_MODEL")
+    println("  D2T_OPENAI_BASE_URL")
 }
