@@ -1,11 +1,13 @@
 package dev.diff2test.android.cli
 
 import dev.diff2test.android.changedetector.GitDiffChangeDetector
+import dev.diff2test.android.changedetector.extractKotlinSymbols
 import dev.diff2test.android.contextbuilder.DefaultTestContextBuilder
 import dev.diff2test.android.core.ChangeSet
 import dev.diff2test.android.core.ChangeSource
 import dev.diff2test.android.core.ChangedFile
 import dev.diff2test.android.core.ChangedSymbol
+import dev.diff2test.android.core.GeneratedTestBundle
 import dev.diff2test.android.core.GradleRunRequest
 import dev.diff2test.android.core.SymbolKind
 import dev.diff2test.android.core.TestPlan
@@ -15,15 +17,18 @@ import dev.diff2test.android.kotlinanalyzer.StubViewModelAnalyzer
 import dev.diff2test.android.policy.DefaultPolicyEngine
 import dev.diff2test.android.styleindex.DefaultStyleIndexer
 import dev.diff2test.android.testclassifier.DefaultTestClassifier
+import dev.diff2test.android.testgenerator.FileSystemGeneratedTestWriter
 import dev.diff2test.android.testgenerator.KotlinUnitTestGenerator
+import dev.diff2test.android.testgenerator.inferModuleRootFromTarget
 import dev.diff2test.android.testplanner.DefaultTestPlanner
+import java.nio.file.Files
 import java.nio.file.Path
 
 fun main(args: Array<String>) {
     when (val command = args.firstOrNull()) {
         "scan" -> runScan()
         "plan" -> runPlan(args.getOrNull(1))
-        "generate" -> runGenerate(args.getOrNull(1))
+        "generate" -> runGenerate(parseGenerateArguments(args.drop(1)))
         "verify" -> runVerify(args.getOrNull(1))
         null, "help", "--help", "-h" -> printHelp()
         else -> {
@@ -33,8 +38,14 @@ fun main(args: Array<String>) {
     }
 }
 
+private val workspaceRoot: Path = findWorkspaceRoot(Path.of(System.getProperty("user.dir")))
+
 private fun runScan() {
-    val changeSet = GitDiffChangeDetector().scan()
+    val changeSet = GitDiffChangeDetector().scan(
+        request = dev.diff2test.android.changedetector.ScanRequest(
+            workingDirectory = workspaceRoot,
+        ),
+    )
     println("Source: ${changeSet.source}")
     println("Base: ${changeSet.baseRef}")
     println("Head: ${changeSet.headRef ?: "(working tree)"}")
@@ -54,25 +65,22 @@ private fun runScan() {
 }
 
 private fun runPlan(target: String?) {
-    val plan = createPlan(target)
+    val analysis = resolveAnalysis(target)
+    val plan = createPlan(analysis)
     println(renderPlan(plan))
 }
 
-private fun runGenerate(target: String?) {
-    val plan = createPlan(target)
-    val analysis = buildAnalysisInput(target)
-    val styleGuide = DefaultStyleIndexer().index(Path.of("."))
-    val context = DefaultTestContextBuilder().build("app", analysis.first(), styleGuide)
+private fun runGenerate(options: GenerateOptions) {
+    val analysis = resolveAnalysis(options.target)
+    val plan = createPlan(analysis)
+    val styleGuide = DefaultStyleIndexer().index(workspaceRoot)
+    val context = DefaultTestContextBuilder().build("app", analysis, styleGuide)
     val bundle = KotlinUnitTestGenerator().generate(plan, context)
 
-    bundle.files.forEach { file ->
-        println("File: ${file.relativePath}")
-        println(file.content)
-    }
-
-    if (bundle.warnings.isNotEmpty()) {
-        println("Warnings:")
-        bundle.warnings.forEach(::println)
+    if (options.write) {
+        writeGeneratedFiles(bundle, analysis.filePath, options.outputRoot)
+    } else {
+        printPreview(bundle)
     }
 }
 
@@ -82,10 +90,10 @@ private fun runVerify(task: String?) {
         GradleRunRequest(
             module = ":apps:cli",
             task = requestedTask,
-            workingDirectory = Path.of(System.getProperty("user.dir")),
+            workingDirectory = workspaceRoot,
         ),
     )
-    val policy = DefaultPolicyEngine().evaluate(createPlan(null), result, repairAttempts = 0)
+    val policy = DefaultPolicyEngine().evaluate(createPlan(resolveAnalysis(null)), result, repairAttempts = 0)
 
     println("Command: ${result.command.joinToString(" ")}")
     println("Exit: ${result.exitCode}")
@@ -94,49 +102,100 @@ private fun runVerify(task: String?) {
     println(result.stdout)
 }
 
-private fun createPlan(target: String?): TestPlan {
-    val analysis = buildAnalysisInput(target).first()
-    val styleGuide = DefaultStyleIndexer().index(Path.of("."))
+private fun createPlan(analysis: ViewModelAnalysis): TestPlan {
+    val styleGuide = DefaultStyleIndexer().index(workspaceRoot)
     val context = DefaultTestContextBuilder().build("app", analysis, styleGuide)
     val testType = DefaultTestClassifier().classify(analysis, context)
     return DefaultTestPlanner().plan(analysis, context, testType)
 }
 
-private fun buildAnalysisInput(target: String?): List<ViewModelAnalysis> {
+private fun resolveAnalysis(target: String?): ViewModelAnalysis {
     if (target != null) {
-        val analyses = StubViewModelAnalyzer().analyze(syntheticChangeSet(target))
+        val analyses = StubViewModelAnalyzer().analyze(explicitTargetChangeSet(target))
         check(analyses.isNotEmpty()) {
             "The current stub analyzer expects a path ending with ViewModel.kt."
         }
-        return analyses
+        return analyses.first()
     }
 
-    val detectedAnalyses = StubViewModelAnalyzer().analyze(GitDiffChangeDetector().scan())
+    val detectedAnalyses = StubViewModelAnalyzer().analyze(
+        GitDiffChangeDetector().scan(
+            request = dev.diff2test.android.changedetector.ScanRequest(
+                workingDirectory = workspaceRoot,
+            ),
+        ),
+    )
     if (detectedAnalyses.isNotEmpty()) {
-        return detectedAnalyses
+        return detectedAnalyses.first()
     }
 
-    return StubViewModelAnalyzer().analyze(syntheticChangeSet("app/src/main/java/com/example/LoginViewModel.kt"))
+    return StubViewModelAnalyzer().analyze(explicitTargetChangeSet("fixtures/sample-app/app/src/main/java/com/example/auth/SignUpViewModel.kt")).first()
 }
 
-private fun syntheticChangeSet(target: String): ChangeSet {
-    val path = Path.of(target)
+private fun explicitTargetChangeSet(target: String): ChangeSet {
+    val path = workspaceRoot.resolve(target).normalize()
+    val symbols = if (Files.exists(path)) {
+        extractKotlinSymbols(path)
+    } else {
+        listOf(
+            ChangedSymbol(
+                name = "loadData",
+                kind = SymbolKind.METHOD,
+                signature = "suspend fun loadData()",
+            ),
+        )
+    }
+
     return ChangeSet(
         source = ChangeSource.GIT_DIFF,
         files = listOf(
             ChangedFile(
                 path = path,
-                changedSymbols = listOf(
-                    ChangedSymbol(
-                        name = "loadData",
-                        kind = SymbolKind.METHOD,
-                        signature = "suspend fun loadData()",
-                    ),
-                ),
+                changedSymbols = symbols,
             ),
         ),
-        summary = "Synthetic change set for CLI bootstrap.",
+        summary = "Explicit target change set.",
     )
+}
+
+private fun findWorkspaceRoot(start: Path): Path {
+    var current: Path? = start.toAbsolutePath().normalize()
+
+    while (current != null) {
+        if (Files.exists(current.resolve("gradlew")) || Files.exists(current.resolve("settings.gradle.kts"))) {
+            return current
+        }
+        current = current.parent
+    }
+
+    return start.toAbsolutePath().normalize()
+}
+
+private fun writeGeneratedFiles(bundle: GeneratedTestBundle, targetPath: Path, outputRootOverride: String?) {
+    val outputRoot = outputRootOverride?.let(Path::of) ?: inferModuleRootFromTarget(targetPath)
+    val writtenFiles = FileSystemGeneratedTestWriter().write(bundle, outputRoot)
+
+    println("Wrote ${writtenFiles.size} file(s) under $outputRoot")
+    writtenFiles.forEach { writtenFile ->
+        println("- $writtenFile")
+    }
+
+    if (bundle.warnings.isNotEmpty()) {
+        println("Warnings:")
+        bundle.warnings.forEach(::println)
+    }
+}
+
+private fun printPreview(bundle: GeneratedTestBundle) {
+    bundle.files.forEach { file ->
+        println("File: ${file.relativePath}")
+        println(file.content)
+    }
+
+    if (bundle.warnings.isNotEmpty()) {
+        println("Warnings:")
+        bundle.warnings.forEach(::println)
+    }
 }
 
 private fun renderPlan(plan: TestPlan): String {
@@ -152,10 +211,46 @@ private fun renderPlan(plan: TestPlan): String {
     }
 }
 
+private data class GenerateOptions(
+    val target: String?,
+    val write: Boolean,
+    val outputRoot: String?,
+)
+
+private fun parseGenerateArguments(arguments: List<String>): GenerateOptions {
+    var target: String? = null
+    var write = false
+    var outputRoot: String? = null
+    var index = 0
+
+    while (index < arguments.size) {
+        when (val argument = arguments[index]) {
+            "--write" -> write = true
+            "--output-root" -> {
+                outputRoot = arguments.getOrNull(index + 1)
+                    ?: error("--output-root requires a path value")
+                index += 1
+            }
+
+            else -> {
+                check(target == null) { "Only one target path is supported for generate." }
+                target = argument
+            }
+        }
+        index += 1
+    }
+
+    return GenerateOptions(
+        target = target,
+        write = write,
+        outputRoot = outputRoot,
+    )
+}
+
 private fun printHelp() {
     println("d2t commands:")
     println("  scan")
     println("  plan [path-to-viewmodel]")
-    println("  generate [path-to-viewmodel]")
+    println("  generate [path-to-viewmodel] [--write] [--output-root path]")
     println("  verify [gradle-task]")
 }

@@ -5,6 +5,7 @@ import dev.diff2test.android.core.ChangeSource
 import dev.diff2test.android.core.ChangedFile
 import dev.diff2test.android.core.ChangedSymbol
 import dev.diff2test.android.core.SymbolKind
+import java.nio.file.Files
 import java.nio.file.Path
 
 data class ScanRequest(
@@ -113,12 +114,12 @@ internal fun parseGitDiff(diffText: String): List<ChangedFile> {
 
             line.startsWith("+") && !line.startsWith("+++") -> {
                 currentHunkLines += line
-                extractChangedSymbol(line)?.let(currentSymbols::add)
+                detectChangedSymbolCandidate(line)?.let(currentSymbols::add)
             }
 
             line.startsWith("-") && !line.startsWith("---") -> {
                 currentHunkLines += line
-                extractChangedSymbol(line)?.let(currentSymbols::add)
+                detectChangedSymbolCandidate(line)?.let(currentSymbols::add)
             }
         }
     }
@@ -141,7 +142,21 @@ private fun parsePathFromDiffHeader(header: String): Path? {
     return Path.of(candidate)
 }
 
-private fun extractChangedSymbol(line: String): ChangedSymbol? {
+fun extractKotlinSymbols(sourceText: String): List<ChangedSymbol> {
+    return sourceText.lineSequence()
+        .mapNotNull(::detectChangedSymbolCandidate)
+        .distinct()
+        .toList()
+}
+
+fun extractKotlinSymbols(sourcePath: Path): List<ChangedSymbol> {
+    if (!Files.exists(sourcePath)) {
+        return emptyList()
+    }
+    return extractKotlinSymbols(Files.readString(sourcePath))
+}
+
+private fun detectChangedSymbolCandidate(line: String): ChangedSymbol? {
     val body = line.removePrefix("+").removePrefix("-").trim()
 
     val classMatch = CLASS_PATTERN.find(body)
