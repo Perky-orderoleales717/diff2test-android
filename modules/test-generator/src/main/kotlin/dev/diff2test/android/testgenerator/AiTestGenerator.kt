@@ -22,35 +22,75 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
-data class OpenAiResponsesConfig(
+data class ResponsesApiConfig(
     val apiKey: String,
     val model: String,
     val baseUrl: String,
+    val reasoningEffort: String? = null,
 )
 
-fun openAiResponsesConfigFromEnvironment(modelOverride: String? = null): OpenAiResponsesConfig? {
-    val apiKey = System.getenv("OPENAI_API_KEY")?.trim().orEmpty()
+fun responsesApiConfigFromEnvironment(modelOverride: String? = null): ResponsesApiConfig? {
+    return responsesApiConfigFromEnvironment(
+        environment = System.getenv(),
+        modelOverride = modelOverride,
+    )
+}
+
+internal fun responsesApiConfigFromEnvironment(
+    environment: Map<String, String>,
+    modelOverride: String? = null,
+): ResponsesApiConfig? {
+    val apiKey = firstDefinedValue(
+        environment,
+        "D2T_AI_AUTH_TOKEN",
+        "LLM_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "D2T_OPENAI_API_KEY",
+        "OPENAI_API_KEY",
+    ).orEmpty()
     if (apiKey.isBlank()) {
         return null
     }
 
     val model = modelOverride
-        ?: System.getenv("D2T_OPENAI_MODEL")
-        ?: System.getenv("OPENAI_MODEL")
+        ?: firstDefinedValue(
+            environment,
+            "D2T_AI_MODEL",
+            "STRIX_LLM",
+            "LLM_MODEL",
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_SMALL_FAST_MODEL",
+            "D2T_OPENAI_MODEL",
+            "OPENAI_MODEL",
+        )
         ?: "gpt-5"
-    val baseUrl = System.getenv("D2T_OPENAI_BASE_URL")
-        ?: System.getenv("OPENAI_BASE_URL")
+    val baseUrl = firstDefinedValue(
+        environment,
+        "D2T_AI_BASE_URL",
+        "LLM_API_BASE",
+        "ANTHROPIC_BASE_URL",
+        "D2T_OPENAI_BASE_URL",
+        "OPENAI_BASE_URL",
+    )
         ?: "https://api.openai.com/v1"
+    val reasoningEffort = firstDefinedValue(
+        environment,
+        "D2T_REASONING_EFFORT",
+        "STRIX_RESONING_EFFORT",
+        "STRIX_REASONING_EFFORT",
+        "OPENAI_REASONING_EFFORT",
+    )
 
-    return OpenAiResponsesConfig(
+    return ResponsesApiConfig(
         apiKey = apiKey,
         model = model,
         baseUrl = baseUrl.removeSuffix("/"),
+        reasoningEffort = reasoningEffort?.trim()?.ifBlank { null },
     )
 }
 
-class OpenAiResponsesTestGenerator(
-    private val config: OpenAiResponsesConfig,
+class ResponsesApiTestGenerator(
+    private val config: ResponsesApiConfig,
     private val fallback: TestGenerator = KotlinUnitTestGenerator(),
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(30))
@@ -88,62 +128,7 @@ class OpenAiResponsesTestGenerator(
     }
 
     private fun buildResponsesRequest(instructions: String, input: String): String {
-        val schema = buildJsonObject {
-            put("type", "object")
-            put(
-                "properties",
-                buildJsonObject {
-                    put(
-                        "content",
-                        buildJsonObject {
-                            put("type", "string")
-                            put("minLength", 1)
-                        },
-                    )
-                    put(
-                        "warnings",
-                        buildJsonObject {
-                            put("type", "array")
-                            put(
-                                "items",
-                                buildJsonObject {
-                                    put("type", "string")
-                                },
-                            )
-                        },
-                    )
-                },
-            )
-            put(
-                "required",
-                buildJsonArray {
-                    add(JsonPrimitive("content"))
-                    add(JsonPrimitive("warnings"))
-                },
-            )
-            put("additionalProperties", false)
-        }
-
-        return buildJsonObject {
-            put("model", config.model)
-            put("store", false)
-            put("instructions", instructions)
-            put("input", input)
-            put(
-                "text",
-                buildJsonObject {
-                    put(
-                        "format",
-                        buildJsonObject {
-                            put("type", "json_schema")
-                            put("name", "generated_viewmodel_test")
-                            put("strict", true)
-                            put("schema", schema)
-                        },
-                    )
-                },
-            )
-        }.toString()
+        return buildResponsesRequest(config, instructions, input)
     }
 
     private fun executeResponsesRequest(requestBody: String): String {
@@ -157,10 +142,81 @@ class OpenAiResponsesTestGenerator(
 
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         check(response.statusCode() in 200..299) {
-            "OpenAI Responses API request failed with HTTP ${response.statusCode()}: ${response.body()}"
+            "Responses API request failed with HTTP ${response.statusCode()}: ${response.body()}"
         }
         return response.body()
     }
+}
+
+internal fun buildResponsesRequest(
+    config: ResponsesApiConfig,
+    instructions: String,
+    input: String,
+): String {
+    val schema = buildJsonObject {
+        put("type", "object")
+        put(
+            "properties",
+            buildJsonObject {
+                put(
+                    "content",
+                    buildJsonObject {
+                        put("type", "string")
+                        put("minLength", 1)
+                    },
+                )
+                put(
+                    "warnings",
+                    buildJsonObject {
+                        put("type", "array")
+                        put(
+                            "items",
+                            buildJsonObject {
+                                put("type", "string")
+                            },
+                        )
+                    },
+                )
+            },
+        )
+        put(
+            "required",
+            buildJsonArray {
+                add(JsonPrimitive("content"))
+                add(JsonPrimitive("warnings"))
+            },
+        )
+        put("additionalProperties", false)
+    }
+
+    return buildJsonObject {
+        put("model", config.model)
+        put("store", false)
+        put("instructions", instructions)
+        put("input", input)
+        put(
+            "text",
+            buildJsonObject {
+                put(
+                    "format",
+                    buildJsonObject {
+                        put("type", "json_schema")
+                        put("name", "generated_viewmodel_test")
+                        put("strict", true)
+                        put("schema", schema)
+                    },
+                )
+            },
+        )
+        if (config.reasoningEffort != null) {
+            put(
+                "reasoning",
+                buildJsonObject {
+                    put("effort", config.reasoningEffort)
+                },
+            )
+        }
+    }.toString()
 }
 
 internal data class AiPromptSpec(
@@ -334,4 +390,13 @@ private fun findWorkspaceRoot(start: Path): Path {
     }
 
     return start.toAbsolutePath().normalize()
+}
+
+private fun firstDefinedValue(
+    environment: Map<String, String>,
+    vararg keys: String,
+): String? {
+    return keys.firstNotNullOfOrNull { key ->
+        environment[key]?.trim()?.ifBlank { null }
+    }
 }

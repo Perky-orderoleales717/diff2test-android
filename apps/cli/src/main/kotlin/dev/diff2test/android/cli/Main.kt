@@ -19,9 +19,9 @@ import dev.diff2test.android.styleindex.DefaultStyleIndexer
 import dev.diff2test.android.testclassifier.DefaultTestClassifier
 import dev.diff2test.android.testgenerator.FileSystemGeneratedTestWriter
 import dev.diff2test.android.testgenerator.KotlinUnitTestGenerator
-import dev.diff2test.android.testgenerator.OpenAiResponsesTestGenerator
+import dev.diff2test.android.testgenerator.ResponsesApiTestGenerator
 import dev.diff2test.android.testgenerator.inferModuleRootFromTarget
-import dev.diff2test.android.testgenerator.openAiResponsesConfigFromEnvironment
+import dev.diff2test.android.testgenerator.responsesApiConfigFromEnvironment
 import dev.diff2test.android.testplanner.DefaultTestPlanner
 import java.nio.file.Files
 import java.nio.file.Path
@@ -332,22 +332,22 @@ private fun createGenerator(
     aiPreference: AiPreference,
     modelOverride: String?,
 ): dev.diff2test.android.testgenerator.TestGenerator {
-    val config = openAiResponsesConfigFromEnvironment(modelOverride)
+    val config = responsesApiConfigFromEnvironment(modelOverride)
 
     return when (aiPreference) {
         AiPreference.ENABLED -> {
             check(config != null) {
-                "--ai requires OPENAI_API_KEY to be set."
+                "--ai requires one of D2T_AI_AUTH_TOKEN, LLM_API_KEY, ANTHROPIC_AUTH_TOKEN, D2T_OPENAI_API_KEY, or OPENAI_API_KEY."
             }
-            println("Using OpenAI test generator (${config.model})")
-            OpenAiResponsesTestGenerator(config)
+            println("Using Responses API-compatible test generator (${config.model})")
+            ResponsesApiTestGenerator(config)
         }
 
         AiPreference.DISABLED -> KotlinUnitTestGenerator()
         AiPreference.AUTO -> {
             if (config != null) {
-                println("Using OpenAI test generator (${config.model})")
-                OpenAiResponsesTestGenerator(config)
+                println("Using Responses API-compatible test generator (${config.model})")
+                ResponsesApiTestGenerator(config)
             } else {
                 KotlinUnitTestGenerator()
             }
@@ -363,7 +363,8 @@ private fun printHelp() {
     println("  auto [--ai|--no-ai] [--model model-name]")
     println("  verify [gradle-task]")
     println("Environment:")
-    println("  OPENAI_API_KEY")
-    println("  D2T_OPENAI_MODEL")
-    println("  D2T_OPENAI_BASE_URL")
+    println("  D2T_AI_AUTH_TOKEN / LLM_API_KEY / ANTHROPIC_AUTH_TOKEN / OPENAI_API_KEY")
+    println("  D2T_AI_MODEL / STRIX_LLM / ANTHROPIC_MODEL / OPENAI_MODEL")
+    println("  D2T_AI_BASE_URL / LLM_API_BASE / ANTHROPIC_BASE_URL / OPENAI_BASE_URL")
+    println("  D2T_REASONING_EFFORT / STRIX_RESONING_EFFORT / OPENAI_REASONING_EFFORT")
 }
