@@ -23,6 +23,7 @@ dependencies {
 }
 
 application {
+    applicationName = "d2t"
     mainClass.set("dev.diff2test.android.cli.MainKt")
 }
 
