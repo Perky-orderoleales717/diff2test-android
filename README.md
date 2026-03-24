@@ -37,14 +37,90 @@ Planned v1 capabilities:
 
 ```bash
 ./gradlew test
-./gradlew :apps:cli:run --args="scan"
-./gradlew :apps:cli:run --args="plan app/src/main/java/com/example/LoginViewModel.kt"
-./gradlew :apps:cli:run --args="generate app/src/main/java/com/example/LoginViewModel.kt"
+./d2t init
+./d2t doctor
+./d2t auto --ai
 ```
+
+## AI Setup
+
+The CLI now supports a user-level config file at `~/.config/d2t/config.toml`.
+
+Create a starter config:
+
+```bash
+./d2t init
+```
+
+Validate the current AI configuration:
+
+```bash
+./d2t doctor
+```
+
+The config stores only the environment variable name for the API key, not the secret itself.
+
+Example for the official OpenAI Responses API:
+
+```toml
+[ai]
+enabled = true
+provider = "openai"
+protocol = "responses-compatible"
+api_key_env = "OPENAI_API_KEY"
+model = "gpt-5"
+base_url = "https://api.openai.com/v1"
+```
+
+Example for a local or self-hosted Responses-compatible gateway:
+
+```toml
+[ai]
+enabled = true
+provider = "custom"
+protocol = "responses-compatible"
+api_key_env = "LLM_API_KEY"
+model = "qwen3-coder-next-mlx"
+base_url = "http://127.0.0.1:12345"
+reasoning_effort = "high"
+```
+
+Then export the key in your shell and run:
+
+```bash
+source ~/.zshrc
+./d2t auto --ai
+```
+
+Current note:
+
+- `responses-compatible` endpoints are supported today.
+- Native Anthropic-style `messages` transport is not implemented yet.
+- If your provider exposes a Responses-compatible gateway, use `provider = "custom"`.
+
+## Commands
+
+```bash
+./d2t init [--force]
+./d2t doctor
+./d2t scan
+./d2t plan path/to/SomeViewModel.kt
+./d2t generate path/to/SomeViewModel.kt --write [--ai|--no-ai]
+./d2t auto [--ai|--no-ai] [--model model-name]
+./d2t verify :module:testTask
+```
+
+## Legacy Env Fallback
+
+If no config file exists, the CLI still falls back to environment variables.
+
+- Auth: `D2T_AI_AUTH_TOKEN`, `LLM_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `OPENAI_API_KEY`
+- Model: `D2T_AI_MODEL`, `STRIX_LLM`, `ANTHROPIC_MODEL`, `OPENAI_MODEL`
+- Base URL: `D2T_AI_BASE_URL`, `LLM_API_BASE`, `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`
+- Reasoning: `D2T_REASONING_EFFORT`, `STRIX_RESONING_EFFORT`, `OPENAI_REASONING_EFFORT`
 
 ## Notes
 
-- The current CLI uses stubbed analysis to prove the engine boundaries and data contracts.
-- The next implementation step is replacing stub analysis with real Kotlin AST or symbol analysis.
+- The current CLI detects changed ViewModels from git diff and can generate test files automatically.
+- The analyzer is still heuristic. Replacing it with real Kotlin AST or symbol analysis remains a priority.
 - MCP exposure currently ships as a catalog scaffold, not a transport-bound server implementation.
-
