@@ -42,7 +42,7 @@ There are now two supported maintainer paths:
 
 1. Manual release
 2. Automated release after a tag or workflow dispatch
-3. Automated tagging after a merge to `main`, followed by automated release publication
+3. Automated tagging after a merge to `main`, followed by automated release publication when the project version is bumped
 
 The automation is defined in:
 
@@ -93,24 +93,22 @@ The token needs write access to:
 
 Without that secret, the workflow still publishes the release asset and prints the formula values you need to update manually.
 
-The tag workflow resolves the next version with this priority:
+The tag workflow now resolves the next version from one source only:
 
-1. If [`build.gradle.kts`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/build.gradle.kts) contains a semantic version higher than the latest tag, that exact version becomes the next tag.
-2. If commit history contains an explicit release commit like `build: release 0.2.0`, that version becomes the next tag.
-3. Otherwise, conventional commit prefixes decide the bump:
-   - `BREAKING CHANGE` or `type!:` commits -> major bump
-   - `feat:` commits -> minor bump
-   - `fix:`, `refactor:`, `perf:`, `build:`, `ci:` commits -> patch bump
-   - `docs:`, `test:`, `chore:` only -> no release tag
-4. `[skip release]` or `[no release]` still skip tagging when no explicit version source is present.
+1. Read [`build.gradle.kts`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/build.gradle.kts)
+2. Parse `version = "x.y.z"`
+3. Compare it to the latest release tag
+4. Create a new tag only when the project version is higher than the latest tag
+
+That means commit messages alone no longer produce releases. If you do not bump `build.gradle.kts`, no new tag or release will be created automatically.
 
 ## What Is Still Manual
 
-The automation does **not** update [`build.gradle.kts`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/build.gradle.kts) for you. If you want the next release to be `0.2.0`, set `version = "0.2.0"` in the PR before merge.
+The automation does **not** update [`build.gradle.kts`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/build.gradle.kts) for you. If you want the next release to be `0.3.1`, set `version = "0.3.1"` in the PR before merge.
 
 That means you still choose one of two operational styles:
 
-- let `tag-release.yml` create the next tag after merge
+- bump the project version in the PR and let `tag-release.yml` create the matching tag after merge
 - or push a tag manually when you want full control
 
 ## Recommended Maintainer Flow
