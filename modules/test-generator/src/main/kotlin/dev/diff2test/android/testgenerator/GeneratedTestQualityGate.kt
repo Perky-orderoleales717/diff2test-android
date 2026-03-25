@@ -19,7 +19,10 @@ class GeneratedTestQualityGate {
                 if (
                     "No concrete test heuristics matched" in warning ||
                     "Could not resolve source" in warning ||
-                    "Could not infer constructor parameters" in warning
+                    "Could not infer constructor parameters" in warning ||
+                    warning.startsWith("TODO:") ||
+                    "mockkStatic" in warning ||
+                    "cancel()" in warning
                 ) {
                     add("Generator emitted a blocking quality warning: $warning")
                 }
@@ -52,6 +55,26 @@ class GeneratedTestQualityGate {
             issues += "${file.relativePath}: unresolved TODO() remains in generated output."
         }
 
+        if (TODO_COMMENT_PATTERN.containsMatchIn(content)) {
+            issues += "${file.relativePath}: TODO-style comments or caveat placeholders are not allowed."
+        }
+
+        if (MOCKING_PATTERN.containsMatchIn(content)) {
+            issues += "${file.relativePath}: mocking-framework-based output is not allowed in generated tests."
+        }
+
+        if (STATIC_MOCKING_PATTERN.containsMatchIn(content)) {
+            issues += "${file.relativePath}: static mocking is not allowed in generated tests."
+        }
+
+        if (CANCEL_PATTERN.containsMatchIn(content)) {
+            issues += "${file.relativePath}: using cancel() to finish coroutine work is not allowed."
+        }
+
+        if (DETACHED_TEST_DISPATCHER_PATTERN.containsMatchIn(content)) {
+            issues += "${file.relativePath}: StandardTestDispatcher() must be bound to runTest via testScheduler."
+        }
+
         val testBlocks = extractTestBlocks(content)
         if (testBlocks.isEmpty()) {
             issues += "${file.relativePath}: generated file does not contain any @Test methods."
@@ -72,6 +95,13 @@ class GeneratedTestQualityGate {
 }
 
 private val TRIVIAL_ASSERT_PATTERN = Regex("""assertTrue\(\s*true\b""")
+private val TODO_COMMENT_PATTERN = Regex("""(?m)^\s*//\s*TODO:|(?m)^\s*/\*\s*TODO:""")
+private val MOCKING_PATTERN = Regex("""\b(io\.mockk|MockK\b|mockk\(|every\s*\{|coEvery\s*\{|Mockito\b)""")
+private val STATIC_MOCKING_PATTERN = Regex("""\bmockkStatic\s*\(""")
+private val CANCEL_PATTERN = Regex("""\.\s*cancel\s*\(""")
+private val DETACHED_TEST_DISPATCHER_PATTERN = Regex(
+    """(?m)^\s*(private\s+)?val\s+\w+\s*=\s*StandardTestDispatcher\(\)\s*$""",
+)
 private val ASSERTION_PATTERN = Regex(
     """\b(assertEquals|assertTrue|assertFalse|assertNull|assertNotNull|assertFails|assertContentEquals|assertContains|assertIs)\s*\(""",
 )

@@ -22,6 +22,8 @@ import dev.diff2test.android.testclassifier.DefaultTestClassifier
 import dev.diff2test.android.testgenerator.AiFailureMode
 import dev.diff2test.android.testgenerator.AnthropicMessagesConfig
 import dev.diff2test.android.testgenerator.AnthropicMessagesTestGenerator
+import dev.diff2test.android.testgenerator.ChatCompletionsConfig
+import dev.diff2test.android.testgenerator.ChatCompletionsTestGenerator
 import dev.diff2test.android.testgenerator.FileSystemGeneratedTestWriter
 import dev.diff2test.android.testgenerator.GeminiGenerateContentConfig
 import dev.diff2test.android.testgenerator.GeminiGenerateContentTestGenerator
@@ -562,6 +564,22 @@ private fun createConfiguredGenerator(
                 ),
             )
 
+        AiProtocol.CHAT_COMPLETIONS ->
+            ConfiguredGenerator(
+                description = "Chat Completions-compatible test generator",
+                model = resolved.model,
+                generator = ChatCompletionsTestGenerator(
+                    config = ChatCompletionsConfig(
+                        apiKey = apiKey,
+                        model = resolved.model,
+                        baseUrl = resolved.baseUrl,
+                        connectTimeoutSeconds = resolved.connectTimeoutSeconds,
+                        requestTimeoutSeconds = resolved.requestTimeoutSeconds,
+                    ),
+                    failureMode = failureMode,
+                ),
+            )
+
         AiProtocol.ANTHROPIC_MESSAGES ->
             ConfiguredGenerator(
                 description = "Anthropic Messages test generator",
@@ -650,6 +668,7 @@ internal fun renderHelpText(): String {
         appendLine("  generated output must pass the built-in quality gate")
         appendLine("AI:")
         appendLine("  Responses-compatible endpoints")
+        appendLine("  Chat Completions-compatible endpoints (custom provider)")
         appendLine("  native Anthropic Messages API")
         appendLine("  native Gemini GenerateContent API")
         appendLine("Config:")

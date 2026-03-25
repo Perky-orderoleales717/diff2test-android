@@ -90,6 +90,25 @@ class OpenAiResponsesTestGeneratorTest {
     }
 
     @Test
+    fun `builds chat completions request with system and user messages`() {
+        val requestBody = buildChatCompletionsRequest(
+            config = ChatCompletionsConfig(
+                apiKey = "sk-local",
+                model = "qwen3-coder-next-mlx",
+                baseUrl = "http://127.0.0.1:12345/v1",
+            ),
+            instructions = "Generate tests",
+            input = "input",
+        )
+
+        assertContains(requestBody, "\"model\":\"qwen3-coder-next-mlx\"")
+        assertContains(requestBody, "\"temperature\":0")
+        assertContains(requestBody, "\"messages\"")
+        assertContains(requestBody, "\"role\":\"system\"")
+        assertContains(requestBody, "\"role\":\"user\"")
+    }
+
+    @Test
     fun `extracts structured payload from anthropic response body`() {
         val responseBody = """
             {
@@ -109,6 +128,30 @@ class OpenAiResponsesTestGeneratorTest {
             payload.content,
         )
         assertEquals(listOf("anthropic"), payload.warnings)
+    }
+
+    @Test
+    fun `extracts structured payload from chat completions response body`() {
+        val responseBody = """
+            {
+              "choices": [
+                {
+                  "message": {
+                    "role": "assistant",
+                    "content": "{\"content\":\"package com.example.auth\\n\\nclass SignUpViewModelGeneratedTest\",\"warnings\":[\"chat\"]}"
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val payload = extractChatCompletionsStructuredPayload(responseBody)
+
+        assertEquals(
+            "package com.example.auth\n\nclass SignUpViewModelGeneratedTest",
+            payload.content,
+        )
+        assertEquals(listOf("chat"), payload.warnings)
     }
 
     @Test
@@ -170,6 +213,44 @@ class OpenAiResponsesTestGeneratorTest {
 
         assertContains(sanitized, "import kotlin.test.Test")
         assertTrue("import org.junit.Test" !in sanitized)
+    }
+
+    @Test
+    fun `stabilizes generated coroutine tests around test scheduler and idle advancement`() {
+        val content = """
+            package com.example.auth
+
+            import kotlinx.coroutines.test.StandardTestDispatcher
+            import kotlinx.coroutines.test.runTest
+            import kotlin.test.Test
+            import kotlin.test.assertTrue
+
+            class LoginViewModelGeneratedTest {
+                private val testDispatcher = StandardTestDispatcher()
+
+                @Test
+                fun `login updates state on success`() = runTest {
+                    val repository = FakeLoginRepository()
+                    val viewModel = LoginViewModel(repository, testDispatcher)
+
+                    viewModel.onEmailChanged("valid@example.com")
+                    viewModel.onPasswordChanged("password123")
+                    viewModel.login()
+
+                    val finalState = viewModel.uiState.value
+                    assertTrue(finalState.isLoggedIn)
+                }
+            }
+        """.trimIndent()
+
+        val sanitized = sanitizeGeneratedKotlin(content)
+
+        assertTrue("private val testDispatcher = StandardTestDispatcher()" !in sanitized)
+        assertContains(sanitized, "LoginViewModel(repository, StandardTestDispatcher(testScheduler))")
+        assertContains(sanitized, "viewModel.login()\n        advanceUntilIdle()")
+        assertContains(sanitized, "@OptIn(ExperimentalCoroutinesApi::class)")
+        assertContains(sanitized, "import kotlinx.coroutines.ExperimentalCoroutinesApi")
+        assertContains(sanitized, "import kotlinx.coroutines.test.advanceUntilIdle")
     }
 
     @Test

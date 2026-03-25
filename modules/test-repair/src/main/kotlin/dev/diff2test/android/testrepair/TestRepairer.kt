@@ -85,6 +85,13 @@ internal fun repairGeneratedKotlin(content: String, failureOutput: String): Stri
     updated = ensureImports(updated, kotlinTestImports)
 
     val coroutineImports = buildList {
+        if ("import kotlinx.coroutines.runTest" in updated) {
+            updated = updated.replace("import kotlinx.coroutines.runTest\n", "")
+        }
+        if ("this@TestScope" in updated) {
+            updated = updated.replace("this@TestScope", "testScheduler")
+        }
+        updated = ensureExperimentalCoroutinesOptIn(stabilizeCoroutineTestPatterns(updated))
         if ("ExperimentalCoroutinesApi" in updated && "import kotlinx.coroutines.ExperimentalCoroutinesApi" !in updated) {
             add("import kotlinx.coroutines.ExperimentalCoroutinesApi")
         }
@@ -103,6 +110,77 @@ internal fun repairGeneratedKotlin(content: String, failureOutput: String): Stri
 }
 
 private val RUN_TEST_PATTERN = Regex("""\brunTest\b""")
+private val CLASS_LEVEL_TEST_DISPATCHER_PATTERN = Regex(
+    """(?m)^\s*private\s+val\s+(\w+)\s*=\s*StandardTestDispatcher\(\)\s*\n?""",
+)
+private val CLASS_DECLARATION_PATTERN = Regex("""(?m)^class\s+\w+""")
+private val GENERATED_TEST_BLOCK_PATTERN = Regex("""@Test[\s\S]*?(?=\n\s*@Test|\n})""")
+private val VIEW_MODEL_CALL_PATTERN = Regex("""viewModel\.\w+\(.*\)""")
+private val STATE_READ_PATTERN = Regex("""viewModel\.\w+\.value""")
+
+private fun stabilizeCoroutineTestPatterns(content: String): String {
+    if ("runTest" !in content) {
+        return content
+    }
+
+    var updated = content
+    CLASS_LEVEL_TEST_DISPATCHER_PATTERN.find(updated)?.let { match ->
+        val dispatcherName = match.groupValues[1]
+        updated = updated.replace(match.value, "")
+        updated = updated.replace(
+            Regex("""\b${Regex.escape(dispatcherName)}\b"""),
+            "StandardTestDispatcher(testScheduler)",
+        )
+    }
+
+    val rebuilt = StringBuilder()
+    var lastIndex = 0
+    GENERATED_TEST_BLOCK_PATTERN.findAll(updated).forEach { match ->
+        rebuilt.append(updated.substring(lastIndex, match.range.first))
+        rebuilt.append(stabilizeCoroutineTestBlock(match.value))
+        lastIndex = match.range.last + 1
+    }
+    rebuilt.append(updated.substring(lastIndex))
+
+    return rebuilt.toString()
+}
+
+private fun stabilizeCoroutineTestBlock(block: String): String {
+    if ("runTest" !in block || "advanceUntilIdle(" in block) {
+        return block
+    }
+
+    val lines = block.lines().toMutableList()
+    val stateReadIndex = lines.indexOfFirst { line ->
+        "viewModel.uiState.value" in line ||
+            STATE_READ_PATTERN.containsMatchIn(line)
+    }
+    if (stateReadIndex <= 0) {
+        return block
+    }
+
+    val callIndex = (stateReadIndex - 1 downTo 0).firstOrNull { index ->
+        VIEW_MODEL_CALL_PATTERN.matches(lines[index].trim())
+    } ?: return block
+
+    val indent = lines[callIndex].takeWhile { it == ' ' || it == '\t' }
+    lines.add(callIndex + 1, "${indent}advanceUntilIdle()")
+    return lines.joinToString("\n")
+}
+
+private fun ensureExperimentalCoroutinesOptIn(content: String): String {
+    if (
+        ("advanceUntilIdle(" !in content && "StandardTestDispatcher(" !in content) ||
+        "@OptIn(ExperimentalCoroutinesApi::class)" in content
+    ) {
+        return content
+    }
+
+    return content.replaceFirst(
+        CLASS_DECLARATION_PATTERN,
+        "@OptIn(ExperimentalCoroutinesApi::class)\n$0",
+    )
+}
 
 private fun ensureImports(content: String, imports: List<String>): String {
     if (imports.isEmpty()) {

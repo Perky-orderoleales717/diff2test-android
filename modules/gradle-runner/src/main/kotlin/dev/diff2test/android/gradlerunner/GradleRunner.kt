@@ -13,12 +13,13 @@ interface GradleRunner {
 class JvmGradleRunner : GradleRunner {
     override fun run(request: GradleRunRequest): ExecutionResult {
         val projectRoot = findGradleProjectRoot(request.workingDirectory)
-        val wrapper = projectRoot.resolve("gradlew").toFile()
-        val executable = if (wrapper.exists()) wrapper.absolutePath else "gradle"
-        val command = mutableListOf(executable, request.task)
+        val invocation = resolveGradleInvocation(projectRoot)
+        val command = mutableListOf(invocation.executable)
+        command.addAll(invocation.arguments)
+        command.add(request.task)
 
         if (!request.testFilter.isNullOrBlank()) {
-            command += listOf("--tests", request.testFilter)
+            command.addAll(listOf("--tests", request.testFilter.orEmpty()))
         }
 
         val process = ProcessBuilder(command)
@@ -38,6 +39,11 @@ class JvmGradleRunner : GradleRunner {
     }
 }
 
+internal data class GradleInvocation(
+    val executable: String,
+    val arguments: List<String>,
+)
+
 internal fun findGradleProjectRoot(start: Path): Path {
     var current: Path? = start.toAbsolutePath().normalize()
 
@@ -49,4 +55,41 @@ internal fun findGradleProjectRoot(start: Path): Path {
     }
 
     return start.toAbsolutePath().normalize()
+}
+
+internal fun resolveGradleInvocation(projectRoot: Path): GradleInvocation {
+    val normalizedProjectRoot = projectRoot.toAbsolutePath().normalize()
+    val localWrapper = normalizedProjectRoot.resolve("gradlew")
+    if (Files.exists(localWrapper)) {
+        return GradleInvocation(
+            executable = localWrapper.toString(),
+            arguments = emptyList(),
+        )
+    }
+
+    val wrapperRoot = findWrapperRoot(normalizedProjectRoot)
+    if (wrapperRoot != null) {
+        return GradleInvocation(
+            executable = wrapperRoot.resolve("gradlew").toString(),
+            arguments = listOf("-p", normalizedProjectRoot.toString()),
+        )
+    }
+
+    return GradleInvocation(
+        executable = "gradle",
+        arguments = listOf("-p", normalizedProjectRoot.toString()),
+    )
+}
+
+private fun findWrapperRoot(start: Path): Path? {
+    var current: Path? = start.toAbsolutePath().normalize()
+
+    while (current != null) {
+        if (Files.exists(current.resolve("gradlew"))) {
+            return current
+        }
+        current = current.parent
+    }
+
+    return null
 }

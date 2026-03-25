@@ -88,6 +88,63 @@ class BoundedRepairerTest {
         assertContains(repair.summary, "No bounded repair rule matched")
     }
 
+    @Test
+    fun `aligns separate test dispatcher with runTest scheduler and drains async work`() {
+        val bundle = GeneratedTestBundle(
+            plan = plan(),
+            files = listOf(
+                GeneratedFile(
+                    relativePath = Path.of("src/test/kotlin/com/example/auth/LoginViewModelGeneratedTest.kt"),
+                    content = """
+                        package com.example.auth
+
+                        import kotlinx.coroutines.test.StandardTestDispatcher
+                        import kotlinx.coroutines.test.runTest
+                        import kotlin.test.Test
+                        import kotlin.test.assertTrue
+
+                        class LoginViewModelGeneratedTest {
+                            private val testDispatcher = StandardTestDispatcher()
+
+                            @Test
+                            fun `login updates state on success`() = runTest {
+                                val repository = FakeLoginRepository()
+                                val viewModel = LoginViewModel(repository, testDispatcher)
+
+                                viewModel.onEmailChanged("valid@example.com")
+                                viewModel.onPasswordChanged("password123")
+                                viewModel.login()
+
+                                val finalState = viewModel.uiState.value
+                                assertTrue(finalState.isLoggedIn)
+                            }
+                        }
+                    """.trimIndent(),
+                ),
+            ),
+        )
+
+        val repair = BoundedRepairer().repair(
+            plan = plan(),
+            bundle = bundle,
+            failure = ExecutionResult(
+                status = ExecutionStatus.FAILED,
+                command = listOf("./gradlew", ":app:test"),
+                exitCode = 1,
+                stdout = "AssertionFailedError",
+            ),
+            attemptNumber = 1,
+        )
+
+        assertTrue(repair.applied)
+        val content = repair.updatedFiles.single().content
+        assertTrue("private val testDispatcher = StandardTestDispatcher()" !in content)
+        assertContains(content, "LoginViewModel(repository, StandardTestDispatcher(testScheduler))")
+        assertContains(content, "viewModel.login()\n        advanceUntilIdle()")
+        assertContains(content, "@OptIn(ExperimentalCoroutinesApi::class)")
+        assertContains(content, "import kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
+
     private fun plan() = TestPlan(
         targetClass = "LoginViewModel",
         targetMethods = listOf("login"),

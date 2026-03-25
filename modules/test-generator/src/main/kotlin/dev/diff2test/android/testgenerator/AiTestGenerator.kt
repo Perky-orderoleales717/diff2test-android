@@ -31,6 +31,14 @@ data class ResponsesApiConfig(
     val requestTimeoutSeconds: Long = 180,
 )
 
+data class ChatCompletionsConfig(
+    val apiKey: String,
+    val model: String,
+    val baseUrl: String,
+    val connectTimeoutSeconds: Long = 30,
+    val requestTimeoutSeconds: Long = 180,
+)
+
 data class AnthropicMessagesConfig(
     val apiKey: String,
     val model: String,
@@ -133,6 +141,7 @@ class ResponsesApiTestGenerator(
     private val failureMode: AiFailureMode = AiFailureMode.FALLBACK_TO_HEURISTIC,
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(config.connectTimeoutSeconds))
+        .version(HttpClient.Version.HTTP_1_1)
         .build(),
 ) : TestGenerator {
     override fun generate(
@@ -197,6 +206,7 @@ class ResponsesApiTestGenerator(
             .uri(URI.create("${config.baseUrl}/responses"))
             .timeout(Duration.ofSeconds(config.requestTimeoutSeconds))
             .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
             .header("Authorization", "Bearer ${config.apiKey}")
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .build()
@@ -209,12 +219,93 @@ class ResponsesApiTestGenerator(
     }
 }
 
+class ChatCompletionsTestGenerator(
+    private val config: ChatCompletionsConfig,
+    private val fallback: TestGenerator = KotlinUnitTestGenerator(),
+    private val failureMode: AiFailureMode = AiFailureMode.FALLBACK_TO_HEURISTIC,
+    private val httpClient: HttpClient = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(config.connectTimeoutSeconds))
+        .version(HttpClient.Version.HTTP_1_1)
+        .build(),
+) : TestGenerator {
+    override fun generate(
+        plan: TestPlan,
+        context: TestContext,
+        analysis: ViewModelAnalysis,
+    ): GeneratedTestBundle {
+        val startedAt = System.nanoTime()
+        return try {
+            val promptSpec = buildPromptSpec(plan, context, analysis)
+            val requestBody = buildChatCompletionsRequest(config, promptSpec.instructions, promptSpec.input)
+            logAiProgress(
+                "request started: model=${config.model}, url=${config.baseUrl}/chat/completions, " +
+                    "instructions=${promptSpec.instructions.length} chars, input=${promptSpec.input.length} chars, " +
+                    "body=${requestBody.length} chars, timeout=${config.requestTimeoutSeconds}s",
+            )
+            val responseBody = executeChatCompletionsRequest(requestBody)
+            logAiProgress(
+                "response received: ${responseBody.length} chars in ${elapsedMillis(startedAt)}ms; parsing structured payload",
+            )
+            val payload = extractChatCompletionsStructuredPayload(responseBody)
+            logAiProgress(
+                "structured payload parsed: warnings=${payload.warnings.size}, output=${payload.content.length} chars",
+            )
+
+            GeneratedTestBundle(
+                plan = plan,
+                files = listOf(
+                    GeneratedFile(
+                        relativePath = generatedTestRelativePath(plan, analysis),
+                        content = sanitizeGeneratedKotlin(payload.content),
+                    ),
+                ),
+                warnings = payload.warnings,
+            )
+        } catch (error: Exception) {
+            logAiProgress(
+                "request failed after ${elapsedMillis(startedAt)}ms: ${error.message ?: error::class.simpleName}",
+            )
+            if (failureMode == AiFailureMode.FAIL_CLOSED) {
+                throw IllegalStateException(
+                    "AI generation failed: ${error.message ?: error::class.simpleName}",
+                    error,
+                )
+            }
+            val fallbackBundle = fallback.generate(plan, context, analysis)
+            fallbackBundle.copy(
+                warnings = listOf(
+                    "AI generation failed: ${error.message ?: error::class.simpleName}. Falling back to heuristic generation.",
+                ) + fallbackBundle.warnings,
+            )
+        }
+    }
+
+    private fun executeChatCompletionsRequest(requestBody: String): String {
+        logAiProgress("waiting for response...")
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create("${config.baseUrl}/chat/completions"))
+            .timeout(Duration.ofSeconds(config.requestTimeoutSeconds))
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .header("Authorization", "Bearer ${config.apiKey}")
+            .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+            .build()
+
+        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+        check(response.statusCode() in 200..299) {
+            "Chat Completions request failed with HTTP ${response.statusCode()}: ${response.body()}"
+        }
+        return response.body()
+    }
+}
+
 class AnthropicMessagesTestGenerator(
     private val config: AnthropicMessagesConfig,
     private val fallback: TestGenerator = KotlinUnitTestGenerator(),
     private val failureMode: AiFailureMode = AiFailureMode.FALLBACK_TO_HEURISTIC,
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(config.connectTimeoutSeconds))
+        .version(HttpClient.Version.HTTP_1_1)
         .build(),
 ) : TestGenerator {
     override fun generate(
@@ -275,6 +366,7 @@ class AnthropicMessagesTestGenerator(
             .uri(URI.create("${config.baseUrl}/messages"))
             .timeout(Duration.ofSeconds(config.requestTimeoutSeconds))
             .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
             .header("x-api-key", config.apiKey)
             .header("anthropic-version", "2023-06-01")
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -294,6 +386,7 @@ class GeminiGenerateContentTestGenerator(
     private val failureMode: AiFailureMode = AiFailureMode.FALLBACK_TO_HEURISTIC,
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(config.connectTimeoutSeconds))
+        .version(HttpClient.Version.HTTP_1_1)
         .build(),
 ) : TestGenerator {
     override fun generate(
@@ -354,6 +447,7 @@ class GeminiGenerateContentTestGenerator(
             .uri(URI.create("${config.baseUrl}/models/${config.model}:generateContent"))
             .timeout(Duration.ofSeconds(config.requestTimeoutSeconds))
             .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
             .header("x-goog-api-key", config.apiKey)
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .build()
@@ -436,6 +530,42 @@ internal fun buildAnthropicMessagesRequest(
                                 )
                             },
                         )
+                    },
+                )
+            },
+        )
+    }.toString()
+}
+
+internal fun buildChatCompletionsRequest(
+    config: ChatCompletionsConfig,
+    instructions: String,
+    input: String,
+): String {
+    val systemPrompt = buildString {
+        appendLine(instructions)
+        appendLine()
+        appendLine("Return valid JSON only.")
+        appendLine("""Use this JSON shape exactly: {"content":"<kotlin source>","warnings":["<warning>"]}""")
+        appendLine("Do not wrap the JSON in Markdown fences.")
+    }.trim()
+
+    return buildJsonObject {
+        put("model", config.model)
+        put("temperature", 0)
+        put(
+            "messages",
+            buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("role", "system")
+                        put("content", systemPrompt)
+                    },
+                )
+                add(
+                    buildJsonObject {
+                        put("role", "user")
+                        put("content", input)
                     },
                 )
             },
@@ -530,7 +660,7 @@ internal fun buildPromptSpec(
         appendLine("The `content` must be a full Kotlin file for `$targetClassName`.")
         appendLine("Target file path: $targetRelativePath")
         appendLine("Prefer constructor-injected fakes over Android runtime dependencies.")
-        appendLine("If information is missing, keep the code honest with TODO() or focused fake implementations instead of inventing APIs.")
+        appendLine("If information is missing, prefer focused fake implementations and record caveats in `warnings` instead of inventing APIs.")
         appendLine("When dependency source is provided, preserve its method names, parameter lists, and exact return types in all stubs and mocks.")
         appendLine("Use `kotlin.test.Test` and `kotlin.test` assertions. Do not use `org.junit.Test`.")
     }
@@ -656,6 +786,23 @@ internal fun extractAnthropicStructuredPayload(responseBody: String): Structured
     return extractStructuredPayloadFromText(text)
 }
 
+internal fun extractChatCompletionsStructuredPayload(responseBody: String): StructuredTestPayload {
+    val parsed = Json.parseToJsonElement(responseBody)
+    val text = parsed.jsonObject["choices"]
+        ?.jsonArray
+        ?.firstOrNull()
+        ?.jsonObject
+        ?.get("message")
+        ?.jsonObject
+        ?.get("content")
+        ?.jsonPrimitive
+        ?.contentOrNull
+        ?.trim()
+        ?: error("Chat Completions response did not include message content.")
+
+    return extractStructuredPayloadFromText(text)
+}
+
 internal fun extractGeminiStructuredPayload(responseBody: String): StructuredTestPayload {
     val root = Json.parseToJsonElement(responseBody).jsonObject
     val text = root["candidates"]?.jsonArray
@@ -750,9 +897,19 @@ internal fun sanitizeGeneratedKotlin(content: String): String {
     } else {
         trimmed
     }
-    return sanitized
-        .replace("import org.junit.Test", "import kotlin.test.Test")
-        .replace("import org.junit.jupiter.api.Test", "import kotlin.test.Test")
+    return ensureGeneratedImports(
+        normalizeImports(
+            ensureExperimentalCoroutinesOptIn(
+                stabilizeCoroutineTestPatterns(
+                    sanitized
+                        .replace("import org.junit.Test", "import kotlin.test.Test")
+                        .replace("import org.junit.jupiter.api.Test", "import kotlin.test.Test")
+                        .replace("import kotlinx.coroutines.runTest\n", "")
+                        .replace("this@TestScope", "testScheduler"),
+                ),
+            ),
+        ),
+    )
 }
 
 internal fun sanitizeGeneratedJson(content: String): String {
@@ -810,3 +967,131 @@ private fun firstDefinedValue(
         environment[key]?.trim()?.ifBlank { null }
     }
 }
+
+private fun normalizeImports(content: String): String {
+    val lines = content.lines()
+    val seenImports = linkedSetOf<String>()
+    val normalizedLines = buildList(lines.size) {
+        lines.forEach { line ->
+            if (line.startsWith("import ")) {
+                if (seenImports.add(line)) {
+                    add(line)
+                }
+            } else {
+                add(line)
+            }
+        }
+    }
+    return normalizedLines.joinToString("\n")
+}
+
+internal fun stabilizeCoroutineTestPatterns(content: String): String {
+    if ("runTest" !in content) {
+        return content
+    }
+
+    var updated = content
+    CLASS_LEVEL_TEST_DISPATCHER_PATTERN.find(updated)?.let { match ->
+        val dispatcherName = match.groupValues[1]
+        updated = updated.replace(match.value, "")
+        updated = updated.replace(
+            Regex("""\b${Regex.escape(dispatcherName)}\b"""),
+            "StandardTestDispatcher(testScheduler)",
+        )
+    }
+
+    val rebuilt = StringBuilder()
+    var lastIndex = 0
+    GENERATED_TEST_BLOCK_PATTERN.findAll(updated).forEach { match ->
+        rebuilt.append(updated.substring(lastIndex, match.range.first))
+        rebuilt.append(stabilizeCoroutineTestBlock(match.value))
+        lastIndex = match.range.last + 1
+    }
+    rebuilt.append(updated.substring(lastIndex))
+
+    return rebuilt.toString()
+}
+
+private fun stabilizeCoroutineTestBlock(block: String): String {
+    if ("runTest" !in block || "advanceUntilIdle(" in block) {
+        return block
+    }
+
+    val lines = block.lines().toMutableList()
+    val stateReadIndex = lines.indexOfFirst { line ->
+        "viewModel.uiState.value" in line ||
+            STATE_READ_PATTERN.containsMatchIn(line)
+    }
+    if (stateReadIndex <= 0) {
+        return block
+    }
+
+    val callIndex = (stateReadIndex - 1 downTo 0).firstOrNull { index ->
+        VIEW_MODEL_CALL_PATTERN.matches(lines[index].trim())
+    } ?: return block
+
+    val indent = lines[callIndex].takeWhile { it == ' ' || it == '\t' }
+    lines.add(callIndex + 1, "${indent}advanceUntilIdle()")
+    return lines.joinToString("\n")
+}
+
+private fun ensureGeneratedImports(content: String): String {
+    val imports = buildList {
+        if (
+            ("advanceUntilIdle(" in content || "StandardTestDispatcher(" in content) &&
+            "import kotlinx.coroutines.ExperimentalCoroutinesApi" !in content
+        ) {
+            add("import kotlinx.coroutines.ExperimentalCoroutinesApi")
+        }
+        if ("runTest(" in content && "import kotlinx.coroutines.test.runTest" !in content) {
+            add("import kotlinx.coroutines.test.runTest")
+        }
+        if ("advanceUntilIdle(" in content && "import kotlinx.coroutines.test.advanceUntilIdle" !in content) {
+            add("import kotlinx.coroutines.test.advanceUntilIdle")
+        }
+    }
+    if (imports.isEmpty()) {
+        return content
+    }
+
+    val packageLineEnd = if (content.startsWith("package ")) {
+        content.indexOf('\n').takeIf { it >= 0 } ?: return content
+    } else {
+        -1
+    }
+    val importSectionStart = if (packageLineEnd >= 0) packageLineEnd + 1 else 0
+    val insertion = buildString {
+        if (packageLineEnd >= 0) {
+            append('\n')
+        }
+        imports.forEach { appendLine(it) }
+    }
+
+    return if (importSectionStart == 0) {
+        insertion + content
+    } else {
+        content.substring(0, importSectionStart) + insertion + content.substring(importSectionStart)
+    }
+}
+
+private fun ensureExperimentalCoroutinesOptIn(content: String): String {
+    if (
+        ("advanceUntilIdle(" !in content && "StandardTestDispatcher(" !in content) ||
+        "@OptIn(ExperimentalCoroutinesApi::class)" in content
+    ) {
+        return content
+    }
+
+    return content.replaceFirst(
+        CLASS_DECLARATION_PATTERN,
+        "@OptIn(ExperimentalCoroutinesApi::class)\n$0",
+    )
+}
+
+private val CLASS_LEVEL_TEST_DISPATCHER_PATTERN = Regex(
+    """(?m)^\s*private\s+val\s+(\w+)\s*=\s*StandardTestDispatcher\(\)\s*\n?""",
+)
+private val CLASS_DECLARATION_PATTERN = Regex("""(?m)^class\s+\w+""")
+private val GENERATED_TEST_BLOCK_PATTERN = Regex("""@Test[\s\S]*?(?=\n\s*@Test|\n})""")
+private val VIEW_MODEL_CALL_PATTERN = Regex("""viewModel\.\w+\(.*\)""")
+private val STATE_READ_PATTERN = Regex("""viewModel\.\w+\.value""")

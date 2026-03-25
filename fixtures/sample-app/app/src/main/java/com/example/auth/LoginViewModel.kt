@@ -17,7 +17,12 @@ class LoginViewModel(
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
     fun onEmailChanged(value: String) {
-        _uiState.update { current -> current.copy(email = value, errorMessage = null) }
+        _uiState.update { current ->
+            current.copy(
+                email = value.trim().lowercase(),
+                errorMessage = null,
+            )
+        }
     }
 
     fun onPasswordChanged(value: String) {
@@ -26,8 +31,14 @@ class LoginViewModel(
 
     fun login() {
         val snapshot = _uiState.value
-        if (snapshot.email.isBlank() || snapshot.password.isBlank()) {
-            _uiState.update { current -> current.copy(errorMessage = "Email and password are required") }
+        if (
+            snapshot.email.isBlank() ||
+            !snapshot.email.contains("@") ||
+            snapshot.password.length < 8
+        ) {
+            _uiState.update { current ->
+                current.copy(errorMessage = "Enter a valid email and a password with at least 8 characters")
+            }
             return
         }
 
@@ -53,4 +64,3 @@ class LoginViewModel(
         }
     }
 }
-

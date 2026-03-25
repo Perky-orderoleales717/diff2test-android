@@ -73,6 +73,30 @@ class D2tConfigTest {
     }
 
     @Test
+    fun `resolves custom chat completions config`() {
+        val resolved = resolveAiConfiguration(
+            loadResult = ConfigLoadResult.Loaded(
+                path = defaultConfigPath(),
+                config = D2tConfig(
+                    ai = D2tAiConfig(
+                        provider = AiProvider.CUSTOM,
+                        protocol = AiProtocol.CHAT_COMPLETIONS,
+                        apiKeyEnv = "LLM_API_KEY",
+                        model = "qwen3-coder-next-mlx",
+                        baseUrl = "http://127.0.0.1:12345/v1",
+                    ),
+                ),
+            ),
+            environment = mapOf("LLM_API_KEY" to "sk-local"),
+        )
+
+        assertEquals(AiProvider.CUSTOM, resolved?.provider)
+        assertEquals(AiProtocol.CHAT_COMPLETIONS, resolved?.protocol)
+        assertEquals("http://127.0.0.1:12345/v1", resolved?.baseUrl)
+        assertTrue(resolved?.supportedByGenerator == true)
+    }
+
+    @Test
     fun `doctor report explains unsupported anthropic protocol`() {
         val loadResult = ConfigLoadResult.Loaded(
             path = defaultConfigPath(),
@@ -124,6 +148,7 @@ class D2tConfigTest {
 
         assertContains(template, "api_key_env = \"OPENAI_API_KEY\"")
         assertContains(template, "request_timeout_seconds = 180")
+        assertContains(template, "protocol = \"chat-completions\"")
         assertTrue("sk-" !in template)
     }
 }

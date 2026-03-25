@@ -16,6 +16,7 @@ enum class AiProvider {
 
 enum class AiProtocol {
     RESPONSES_COMPATIBLE,
+    CHAT_COMPLETIONS,
     ANTHROPIC_MESSAGES,
     GEMINI_GENERATE_CONTENT,
 }
@@ -140,6 +141,7 @@ private fun parseProtocol(rawValue: String?, provider: AiProvider): AiProtocol {
     return when (rawValue?.trim()?.lowercase()) {
         null, "" -> defaultProtocolFor(provider)
         "responses-compatible", "responses_compatible", "responses" -> AiProtocol.RESPONSES_COMPATIBLE
+        "chat-completions", "chat_completions", "chatcompletions" -> AiProtocol.CHAT_COMPLETIONS
         "anthropic-messages", "anthropic_messages", "messages" -> AiProtocol.ANTHROPIC_MESSAGES
         "gemini-generate-content", "gemini_generate_content", "generate-content", "generate_content" ->
             AiProtocol.GEMINI_GENERATE_CONTENT
@@ -197,8 +199,10 @@ internal fun resolveAiConfiguration(
         model == null -> "Set ai.model in config.toml or pass --model."
         ai.provider == AiProvider.OPENAI && ai.protocol != AiProtocol.RESPONSES_COMPATIBLE ->
             "Provider `openai` requires `protocol = \"responses-compatible\"`."
-        ai.provider == AiProvider.CUSTOM && ai.protocol != AiProtocol.RESPONSES_COMPATIBLE ->
-            "Provider `custom` requires `protocol = \"responses-compatible\"`."
+        ai.provider == AiProvider.CUSTOM &&
+            ai.protocol != AiProtocol.RESPONSES_COMPATIBLE &&
+            ai.protocol != AiProtocol.CHAT_COMPLETIONS ->
+            "Provider `custom` requires `protocol = \"responses-compatible\"` or `protocol = \"chat-completions\"`."
         ai.provider == AiProvider.ANTHROPIC && ai.protocol != AiProtocol.ANTHROPIC_MESSAGES ->
             "Provider `anthropic` requires `protocol = \"anthropic-messages\"`."
         ai.provider == AiProvider.GEMINI && ai.protocol != AiProtocol.GEMINI_GENERATE_CONTENT ->
@@ -306,7 +310,8 @@ enabled = true
 # `openai` works out of the box with the official OpenAI Responses API.
 # `anthropic` uses the native Anthropic Messages API.
 # `gemini` uses the native Gemini GenerateContent API.
-# `custom` is for self-hosted or gateway endpoints that expose a Responses-compatible API.
+# `custom` is for self-hosted or gateway endpoints that expose a
+# Responses-compatible API or an OpenAI-style Chat Completions API.
 provider = "openai"
 protocol = "responses-compatible"
 
@@ -342,6 +347,15 @@ base_url = "https://api.openai.com/v1"
 # model = "qwen3-coder-next-mlx"
 # base_url = "http://127.0.0.1:12345"
 # reasoning_effort = "high"
+# connect_timeout_seconds = 30
+# request_timeout_seconds = 300
+
+# Example for a local or self-hosted Chat Completions server:
+# provider = "custom"
+# protocol = "chat-completions"
+# api_key_env = "LLM_API_KEY"
+# model = "qwen3-coder-next-mlx"
+# base_url = "http://127.0.0.1:12345/v1"
 # connect_timeout_seconds = 30
 # request_timeout_seconds = 300
     """.trimIndent() + "\n"
