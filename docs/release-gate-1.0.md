@@ -10,7 +10,7 @@ Use this checklist before creating the first `1.0.0` release.
 
 ## Analyzer
 
-- [ ] The default analyzer is source-backed and no longer presented as a stub
+- [ ] The default analyzer uses compiler-backed symbol resolution for same-module Kotlin sources and is no longer presented as a stub
 - [ ] Public methods, constructor dependencies, and observable holders are covered across the fixture matrix
 - [ ] Remaining analyzer limits are surfaced clearly in CLI output
 
@@ -36,6 +36,7 @@ Use this checklist before creating the first `1.0.0` release.
   - SharedFlow event emission
   - validation-heavy flows
 - [ ] `./gradlew -p fixtures/sample-app :app:test` passes on CI
+- [ ] `./scripts/verify_fixture_generation.sh` passes on CI
 
 ## Release Operations
 

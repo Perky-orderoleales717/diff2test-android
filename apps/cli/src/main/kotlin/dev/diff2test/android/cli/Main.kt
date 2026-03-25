@@ -20,8 +20,14 @@ import dev.diff2test.android.policy.DefaultPolicyEngine
 import dev.diff2test.android.styleindex.DefaultStyleIndexer
 import dev.diff2test.android.testclassifier.DefaultTestClassifier
 import dev.diff2test.android.testgenerator.AiFailureMode
+import dev.diff2test.android.testgenerator.AnthropicMessagesConfig
+import dev.diff2test.android.testgenerator.AnthropicMessagesTestGenerator
 import dev.diff2test.android.testgenerator.FileSystemGeneratedTestWriter
+import dev.diff2test.android.testgenerator.GeminiGenerateContentConfig
+import dev.diff2test.android.testgenerator.GeminiGenerateContentTestGenerator
+import dev.diff2test.android.testgenerator.GeneratedTestQualityGate
 import dev.diff2test.android.testgenerator.KotlinUnitTestGenerator
+import dev.diff2test.android.testgenerator.ResponsesApiConfig
 import dev.diff2test.android.testgenerator.ResponsesApiTestGenerator
 import dev.diff2test.android.testgenerator.inferModuleRootFromTarget
 import dev.diff2test.android.testgenerator.responsesApiConfigFromEnvironment
@@ -201,7 +207,19 @@ private fun createBundle(
     val plan = createPlan(analysis)
     val styleGuide = DefaultStyleIndexer().index(workspaceRoot)
     val context = DefaultTestContextBuilder().build("app", analysis, styleGuide)
-    return generator.generate(plan, context, analysis)
+    return generator.generate(plan, context, analysis).also(::ensureGeneratedBundleQuality)
+}
+
+private fun ensureGeneratedBundleQuality(bundle: GeneratedTestBundle) {
+    val report = GeneratedTestQualityGate().evaluate(bundle)
+    check(report.passed) {
+        buildString {
+            appendLine("Generated tests failed the quality gate.")
+            report.issues.forEach { issue ->
+                appendLine("- $issue")
+            }
+        }.trimEnd()
+    }
 }
 
 private fun resolveAnalysis(target: String?): ViewModelAnalysis {
@@ -212,7 +230,7 @@ private fun resolveAnalysis(target: String?): ViewModelAnalysis {
         }
         val analyses = SourceBackedViewModelAnalyzer().analyze(explicitTargetChangeSet(target))
         check(analyses.isNotEmpty()) {
-            "The source-backed analyzer expects a path ending with ViewModel.kt."
+            "The ViewModel analyzer expects a path ending with ViewModel.kt."
         }
         return analyses.first()
     }
@@ -448,34 +466,55 @@ private fun createGenerator(
 ): dev.diff2test.android.testgenerator.TestGenerator {
     val loadResult = loadConfig()
     val resolvedFromConfig = resolveAiConfiguration(loadResult, System.getenv(), modelOverride)
-    val config = when {
-        resolvedFromConfig != null -> toResponsesApiConfig(resolvedFromConfig, System.getenv())
-        else -> responsesApiConfigFromEnvironment(modelOverride)
-    }
+    val config = responsesApiConfigFromEnvironment(modelOverride)
     val configIssue = when {
         resolvedFromConfig?.supportedByGenerator == false -> resolvedFromConfig.issue
-        resolvedFromConfig != null && config == null -> resolvedFromConfig.issue ?: "Config could not be resolved."
+        resolvedFromConfig != null && createConfiguredGenerator(
+            resolved = resolvedFromConfig,
+            environment = System.getenv(),
+            failureMode = AiFailureMode.FAIL_CLOSED,
+        ) == null -> resolvedFromConfig.issue ?: "Config could not be resolved."
         else -> null
     }
 
     return when (aiPreference) {
         AiPreference.ENABLED -> {
-            check(config != null && configIssue == null) {
-                configIssue
-                    ?: "--ai requires a valid config file or one of D2T_AI_AUTH_TOKEN, LLM_API_KEY, ANTHROPIC_AUTH_TOKEN, D2T_OPENAI_API_KEY, or OPENAI_API_KEY."
+            if (resolvedFromConfig != null) {
+                check(configIssue == null) {
+                    configIssue ?: "--ai requires a valid configured provider."
+                }
+                val configured = createConfiguredGenerator(
+                    resolved = resolvedFromConfig,
+                    environment = System.getenv(),
+                    failureMode = AiFailureMode.FAIL_CLOSED,
+                ) ?: error(configIssue ?: "Config could not be resolved.")
+                println("Using ${configured.description} (${configured.model})")
+                return configured.generator
+            }
+            check(config != null) {
+                "--ai requires a valid config file or one of D2T_AI_AUTH_TOKEN, LLM_API_KEY, ANTHROPIC_AUTH_TOKEN, D2T_OPENAI_API_KEY, or OPENAI_API_KEY."
             }
             println("Using Responses API-compatible test generator (${config.model})")
-            ResponsesApiTestGenerator(
-                config = config,
-                failureMode = AiFailureMode.FAIL_CLOSED,
-            )
+            ResponsesApiTestGenerator(config = config, failureMode = AiFailureMode.FAIL_CLOSED)
         }
 
         AiPreference.DISABLED -> KotlinUnitTestGenerator()
         AiPreference.AUTO -> {
-            if (config != null && configIssue == null) {
+            if (resolvedFromConfig != null && configIssue != null) {
+                error(configIssue)
+            }
+            if (resolvedFromConfig != null) {
+                val configured = createConfiguredGenerator(
+                    resolved = resolvedFromConfig,
+                    environment = System.getenv(),
+                    failureMode = if (strictAi) AiFailureMode.FAIL_CLOSED else AiFailureMode.FALLBACK_TO_HEURISTIC,
+                ) ?: error(configIssue ?: "Config could not be resolved.")
+                println("Using ${configured.description} (${configured.model})")
+                return configured.generator
+            }
+            if (config != null) {
                 println("Using Responses API-compatible test generator (${config.model})")
-                ResponsesApiTestGenerator(
+                return ResponsesApiTestGenerator(
                     config = config,
                     failureMode = if (strictAi) {
                         AiFailureMode.FAIL_CLOSED
@@ -483,11 +522,79 @@ private fun createGenerator(
                         AiFailureMode.FALLBACK_TO_HEURISTIC
                     },
                 )
-            } else {
-                KotlinUnitTestGenerator()
             }
+            KotlinUnitTestGenerator()
         }
     }
+}
+
+private data class ConfiguredGenerator(
+    val description: String,
+    val model: String,
+    val generator: dev.diff2test.android.testgenerator.TestGenerator,
+)
+
+private fun createConfiguredGenerator(
+    resolved: ResolvedAiConfiguration,
+    environment: Map<String, String>,
+    failureMode: AiFailureMode,
+): ConfiguredGenerator? {
+    val apiKey = environment[resolved.apiKeyEnv]?.trim().orEmpty()
+    if (!resolved.supportedByGenerator || apiKey.isBlank() || resolved.baseUrl.isNullOrBlank()) {
+        return null
+    }
+
+    val generator = when (resolved.protocol) {
+        AiProtocol.RESPONSES_COMPATIBLE ->
+            ConfiguredGenerator(
+                description = "Responses API-compatible test generator",
+                model = resolved.model,
+                generator = ResponsesApiTestGenerator(
+                    config = ResponsesApiConfig(
+                        apiKey = apiKey,
+                        model = resolved.model,
+                        baseUrl = resolved.baseUrl,
+                        reasoningEffort = resolved.reasoningEffort,
+                        connectTimeoutSeconds = resolved.connectTimeoutSeconds,
+                        requestTimeoutSeconds = resolved.requestTimeoutSeconds,
+                    ),
+                    failureMode = failureMode,
+                ),
+            )
+
+        AiProtocol.ANTHROPIC_MESSAGES ->
+            ConfiguredGenerator(
+                description = "Anthropic Messages test generator",
+                model = resolved.model,
+                generator = AnthropicMessagesTestGenerator(
+                    config = AnthropicMessagesConfig(
+                        apiKey = apiKey,
+                        model = resolved.model,
+                        baseUrl = resolved.baseUrl,
+                        connectTimeoutSeconds = resolved.connectTimeoutSeconds,
+                        requestTimeoutSeconds = resolved.requestTimeoutSeconds,
+                    ),
+                    failureMode = failureMode,
+                ),
+            )
+
+        AiProtocol.GEMINI_GENERATE_CONTENT ->
+            ConfiguredGenerator(
+                description = "Gemini GenerateContent test generator",
+                model = resolved.model,
+                generator = GeminiGenerateContentTestGenerator(
+                    config = GeminiGenerateContentConfig(
+                        apiKey = apiKey,
+                        model = resolved.model,
+                        baseUrl = resolved.baseUrl,
+                        connectTimeoutSeconds = resolved.connectTimeoutSeconds,
+                        requestTimeoutSeconds = resolved.requestTimeoutSeconds,
+                    ),
+                    failureMode = failureMode,
+                ),
+            )
+    }
+    return generator
 }
 
 private fun printAnalysisWarnings(analysis: ViewModelAnalysis) {
@@ -540,8 +647,11 @@ internal fun renderHelpText(): String {
         appendLine("Verification:")
         appendLine("  auto writes generated tests and verifies them by default")
         appendLine("  --repair enables one bounded repair pass for common import and coroutine test utility failures")
+        appendLine("  generated output must pass the built-in quality gate")
         appendLine("AI:")
-        appendLine("  Responses-compatible endpoints only")
+        appendLine("  Responses-compatible endpoints")
+        appendLine("  native Anthropic Messages API")
+        appendLine("  native Gemini GenerateContent API")
         appendLine("Config:")
         appendLine("  ~/.config/d2t/config.toml")
         appendLine("Legacy env fallback:")

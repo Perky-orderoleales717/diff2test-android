@@ -136,6 +136,8 @@ private fun buildTestMethods(analysis: ViewModelAnalysis): List<RenderedTestMeth
             return@forEach
         }
 
+        buildEventEmissionTest(method, analysis)?.let(methods::add)
+
         if (isActionMethod(method)) {
             buildValidationTest(method, analysis)?.let(methods::add)
             buildSuccessActionTest(method, analysis)?.let(methods::add)
@@ -238,6 +240,38 @@ private fun buildSuccessActionTest(
     )
 }
 
+private fun buildEventEmissionTest(
+    method: TargetMethod,
+    analysis: ViewModelAnalysis,
+): RenderedTestMethod? {
+    val body = method.body.orEmpty()
+    val sharedFlowHolderName = sharedFlowHolderName(analysis) ?: return null
+    if (!supportsReplayCacheEventAssertion(analysis)) {
+        return null
+    }
+    val emittedExpression = emittedEventExpression(body) ?: return null
+    val setterCalls = availableSetterMethods(analysis)
+        .map { (methodName, propertyName) ->
+            "    viewModel.$methodName(${quote(validInputForProperty(propertyName))})"
+        }
+    val usesCoroutineLaunch = "viewModelScope.launch" in body
+
+    return RenderedTestMethod(
+        lines = buildList {
+            add("@Test")
+            add("fun `${method.name} emits the expected event`() = runTest(testDispatcher) {")
+            add("    val viewModel = createViewModel()")
+            addAll(setterCalls)
+            add("    viewModel.${method.name}()")
+            if (usesCoroutineLaunch) {
+                add("    advanceUntilIdle()")
+            }
+            add("    assertEquals($emittedExpression, viewModel.$sharedFlowHolderName.replayCache.last())")
+            add("}")
+        },
+    )
+}
+
 private fun availableSetterMethods(analysis: ViewModelAnalysis): List<Pair<String, String>> {
     val fromAnalysis = analysis.publicMethods
         .mapNotNull { method ->
@@ -257,6 +291,25 @@ private fun availableSetterMethods(analysis: ViewModelAnalysis): List<Pair<Strin
     }
 
     return fromAnalysis
+}
+
+private fun sharedFlowHolderName(analysis: ViewModelAnalysis): String? {
+    return analysis.stateHolders.firstOrNull { "SharedFlow<" in it }
+        ?.substringBefore(':')
+        ?.trim()
+}
+
+private fun emittedEventExpression(body: String): String? {
+    return TRY_EMIT_PATTERN.find(body)?.groupValues?.getOrNull(1)?.trim()?.ifBlank { null }
+        ?: EMIT_PATTERN.find(body)?.groupValues?.getOrNull(1)?.trim()?.ifBlank { null }
+}
+
+private fun supportsReplayCacheEventAssertion(analysis: ViewModelAnalysis): Boolean {
+    if (!Files.exists(analysis.filePath)) {
+        return false
+    }
+    val source = Files.readString(analysis.filePath)
+    return REPLAYABLE_SHARED_FLOW_PATTERN.containsMatchIn(source)
 }
 
 private fun setterPropertyName(method: TargetMethod): String? {
@@ -585,6 +638,9 @@ private val SETTER_SOURCE_PATTERN = Regex("""fun\s+(on([A-Z][A-Za-z0-9_]*)Change
 private val PACKAGE_PATTERN = Regex("""^\s*package\s+([A-Za-z0-9_.]+)""", RegexOption.MULTILINE)
 private val ERROR_MESSAGE_PATTERN = Regex("errorMessage\\s*=\\s*\"([^\"]+)\"")
 private val SUCCESS_PROPERTY_PATTERN = Regex("""(is[A-Z][A-Za-z0-9_]*)\s*=\s*true""")
+private val TRY_EMIT_PATTERN = Regex("""\.tryEmit\(([^)]+)\)""")
+private val EMIT_PATTERN = Regex("""\.emit\(([^)]+)\)""")
+private val REPLAYABLE_SHARED_FLOW_PATTERN = Regex("""MutableSharedFlow<[^>]+>\([^)]*replay\s*=\s*[1-9]""")
 private val INTERFACE_PATTERN = Regex("""\binterface\s+[A-Za-z_][A-Za-z0-9_]*""")
 private val INTERFACE_METHOD_PATTERN =
     Regex("""(?:override\s+)?(suspend\s+)?fun\s+([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)\s*:\s*([A-Za-z0-9_.<>?]+)""")

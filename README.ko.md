@@ -72,13 +72,13 @@
 - `auto --repair` 사용 시 import 및 coroutine test utility 오류에 대한 bounded repair 1회
 - `d2t init`, `d2t doctor` 기반 사용자 설정
 - Homebrew와 릴리스 ZIP 배포
+- OpenAI Responses API, Anthropic Messages API, Gemini GenerateContent API, Responses-compatible 게이트웨이 지원
 
 ## 1.0에 아직 포함하지 않는 범위
 
 - transport가 연결된 정식 MCP 서버
 - instrumented `androidTest` 자동 생성
 - Compose UI test 생성
-- native Anthropic `messages` transport
 - end-to-end repair 루프
 - primary path 기준의 비휴리스틱 Kotlin 정밀 분석
 
@@ -132,8 +132,9 @@ d2t verify
 소스에서 직접 실행하는 경우에는 `d2t` 대신 `./d2t`를 사용해주세요.
 
 `auto`는 이제 기본으로 생성 후 검증까지 수행합니다. import나 coroutine test utility 관련 공통 오류에 대해 1회 bounded repair를 시도하려면 `--repair`를 사용해주세요.
+생성된 결과물은 기본 내장 quality gate도 통과해야 하며, placeholder assertion이나 남아 있는 `TODO()`가 있으면 실패로 처리합니다.
 
-현재 analyzer가 PSI나 symbol resolution 대신 source-backed declaration parsing을 쓰는 경우, 관련 명령은 그 경고를 CLI에 그대로 출력합니다.
+현재 analyzer는 same-module Kotlin source에 대해 compiler-backed symbol resolution을 사용하며, 외부 classpath symbol을 끝까지 해석하지 못한 경우에는 관련 경고를 CLI에 그대로 출력합니다.
 
 ## AI 설정
 
@@ -235,9 +236,8 @@ apps/cli/build/distributions/d2t.zip
 
 현재는 아래 항목이 아직 제한되거나 미구현 상태입니다.
 
-- 1.0 수준의 Kotlin PSI 또는 symbol resolution 기반 정밀 분석
-- Responses-compatible 외의 AI transport
-- native Anthropic `messages` transport
+- same-module Kotlin source 기준 compiler-backed symbol resolution 안정화
+- 외부 dependency/classpath symbol 해석 정확도 추가 개선
 - repair는 아직 bounded import 및 coroutine utility 보정 수준만 지원
 - transport가 연결된 정식 MCP 서버
 

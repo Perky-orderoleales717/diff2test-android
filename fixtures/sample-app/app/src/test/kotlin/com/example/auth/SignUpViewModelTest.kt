@@ -24,9 +24,8 @@ class SignUpViewModelTest {
         viewModel.submitRegistration()
 
         assertEquals(
-            "Please complete all fields with a valid password",
+            "Please enter a valid email and a password with at least 8 characters",
             viewModel.uiState.value.errorMessage,
         )
     }
 }
-

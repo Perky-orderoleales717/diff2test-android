@@ -44,7 +44,7 @@ class SourceBackedViewModelAnalyzerTest {
         assertTrue(analysis.publicMethods.all { it.mutatesState })
         assertContains(
             analysis.notes.single(),
-            "Source-backed declaration analysis without PSI or symbol resolution",
+            "Compiler-backed symbol resolution is enabled",
         )
     }
 
@@ -61,6 +61,144 @@ class SourceBackedViewModelAnalyzerTest {
         assertContains(analysis.androidFrameworkTouchpoints, "SavedStateHandle")
         assertTrue(analysis.constructorDependencies.any { it.type == "SavedStateHandle" && it.role == "state restoration" })
         assertEquals("uiState", analysis.primaryStateHolderName)
+    }
+
+    @Test
+    fun `resolves imported typealiases inside the same module`() {
+        val moduleRoot = Files.createTempDirectory("d2t-analyzer-alias")
+        val sourceRoot = moduleRoot.resolve("src/main/kotlin")
+
+        val aliasesFile = sourceRoot.resolve("com/example/types/Aliases.kt")
+        Files.createDirectories(aliasesFile.parent)
+        Files.writeString(
+            aliasesFile,
+            """
+            package com.example.types
+
+            import kotlinx.coroutines.flow.StateFlow
+            import com.example.auth.SignUpUiState
+            import com.example.auth.RegisterUserUseCase
+
+            typealias RegistrationUseCase = RegisterUserUseCase
+            typealias SignUpStateStream = StateFlow<SignUpUiState>
+            """.trimIndent(),
+        )
+
+        val supportFile = sourceRoot.resolve("com/example/auth/Support.kt")
+        Files.createDirectories(supportFile.parent)
+        Files.writeString(
+            supportFile,
+            """
+            package com.example.auth
+
+            class RegisterUserUseCase
+            data class SignUpUiState(val isRegistered: Boolean = false)
+            """.trimIndent(),
+        )
+
+        val viewModelFile = sourceRoot.resolve("com/example/auth/AliasedViewModel.kt")
+        Files.writeString(
+            viewModelFile,
+            """
+            package com.example.auth
+
+            import androidx.lifecycle.ViewModel
+            import com.example.types.RegistrationUseCase
+            import com.example.types.SignUpStateStream
+            import kotlinx.coroutines.flow.MutableStateFlow
+            import kotlinx.coroutines.flow.asStateFlow
+
+            class AliasedViewModel(
+                private val registerUser: RegistrationUseCase,
+            ) : ViewModel() {
+                private val _uiState = MutableStateFlow(SignUpUiState())
+                val uiState: SignUpStateStream = _uiState.asStateFlow()
+
+                fun submit() {
+                    _uiState.value = _uiState.value.copy(isRegistered = true)
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val changeSet = ChangeSet(
+            source = ChangeSource.GIT_DIFF,
+            files = listOf(
+                ChangedFile(
+                    path = viewModelFile,
+                    changedSymbols = listOf(
+                        ChangedSymbol(name = "submit", kind = SymbolKind.METHOD),
+                    ),
+                ),
+            ),
+        )
+
+        val analysis = analyzer.analyze(changeSet).single()
+
+        assertEquals(listOf("RegisterUserUseCase"), analysis.constructorDependencies.map { it.type })
+        assertEquals(listOf("uiState: StateFlow<SignUpUiState>"), analysis.stateHolders)
+        assertEquals("SignUpUiState", analysis.primaryStateType)
+    }
+
+    @Test
+    fun `resolves generic typealiases with compiler-backed analysis`() {
+        val moduleRoot = Files.createTempDirectory("d2t-analyzer-generic-alias")
+        val sourceRoot = moduleRoot.resolve("src/main/kotlin")
+
+        val aliasesFile = sourceRoot.resolve("com/example/types/Aliases.kt")
+        Files.createDirectories(aliasesFile.parent)
+        Files.writeString(
+            aliasesFile,
+            """
+            package com.example.types
+
+            import kotlinx.coroutines.flow.StateFlow
+
+            typealias ResultState<T> = StateFlow<Result<T>>
+            """.trimIndent(),
+        )
+
+        val viewModelFile = sourceRoot.resolve("com/example/auth/GenericAliasViewModel.kt")
+        Files.createDirectories(viewModelFile.parent)
+        Files.writeString(
+            viewModelFile,
+            """
+            package com.example.auth
+
+            import androidx.lifecycle.ViewModel
+            import com.example.types.ResultState
+            import kotlinx.coroutines.flow.MutableStateFlow
+            import kotlinx.coroutines.flow.asStateFlow
+
+            data class GenericUiState(val query: String = "")
+
+            class GenericAliasViewModel : ViewModel() {
+                private val _uiState = MutableStateFlow(Result.success(GenericUiState()))
+                val uiState: ResultState<GenericUiState> = _uiState.asStateFlow()
+
+                fun clear() {
+                    _uiState.value = Result.success(GenericUiState())
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val changeSet = ChangeSet(
+            source = ChangeSource.GIT_DIFF,
+            files = listOf(
+                ChangedFile(
+                    path = viewModelFile,
+                    changedSymbols = listOf(
+                        ChangedSymbol(name = "clear", kind = SymbolKind.METHOD),
+                    ),
+                ),
+            ),
+        )
+
+        val analysis = analyzer.analyze(changeSet).single()
+
+        assertEquals(listOf("uiState: StateFlow<Result<GenericUiState>>"), analysis.stateHolders)
+        assertEquals("Result<GenericUiState>", analysis.primaryStateType)
     }
 
     private fun findRepoRoot(): Path {
