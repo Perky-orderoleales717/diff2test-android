@@ -44,7 +44,8 @@ object Diff2TestCatalog {
 }
 
 fun main() {
-    println("diff2test-android MCP catalog")
+    println("diff2test-android experimental MCP catalog scaffold")
+    println("This app does not open an MCP transport yet. It only prints the current tool, resource, and prompt catalog.")
     println()
     println("Tools:")
     Diff2TestCatalog.tools.forEach { tool ->
@@ -61,4 +62,3 @@ fun main() {
         println("- ${prompt.name}: ${prompt.description}")
     }
 }
-
