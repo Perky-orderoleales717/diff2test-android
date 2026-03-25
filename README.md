@@ -133,7 +133,7 @@ If you are running from source instead of Homebrew, use `./d2t` instead of `d2t`
 `auto` now writes generated tests and verifies them by default. Add `--repair` if you want one bounded repair pass for common import and coroutine-test utility failures.
 Generated output must also pass the built-in quality gate, which rejects placeholder assertions and unresolved `TODO()` scaffolding.
 
-Commands that rely on the current analyzer surface explicit analysis warnings when they are using PSI-backed declaration parsing without symbol resolution.
+Commands that rely on the current analyzer surface explicit analysis warnings when they are using PSI-backed declaration parsing with local import and typealias resolution, but without full compiler symbol resolution.
 
 ## AI Configuration
 

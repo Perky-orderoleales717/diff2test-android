@@ -25,18 +25,18 @@ class MainOutputTest {
             className = "LoginViewModel",
             filePath = Path.of("/tmp/LoginViewModel.kt"),
             notes = listOf(
-                "PSI-backed declaration analysis without symbol resolution.",
-                "PSI-backed declaration analysis without symbol resolution.",
-                "Symbol resolution is still pending.",
+                "PSI-backed declaration analysis with local import and typealias resolution.",
+                "PSI-backed declaration analysis with local import and typealias resolution.",
+                "Full compiler symbol resolution is still pending.",
             ),
         )
 
         val rendered = renderAnalysisWarnings(analysis)
 
         assertContains(rendered.orEmpty(), "Analysis warnings:")
-        assertContains(rendered.orEmpty(), "- PSI-backed declaration analysis without symbol resolution.")
-        assertContains(rendered.orEmpty(), "- Symbol resolution is still pending.")
-        assertEquals(1, Regex("PSI-backed declaration analysis without symbol resolution\\.").findAll(rendered.orEmpty()).count())
+        assertContains(rendered.orEmpty(), "- PSI-backed declaration analysis with local import and typealias resolution.")
+        assertContains(rendered.orEmpty(), "- Full compiler symbol resolution is still pending.")
+        assertEquals(1, Regex("PSI-backed declaration analysis with local import and typealias resolution\\.").findAll(rendered.orEmpty()).count())
     }
 
     @Test
