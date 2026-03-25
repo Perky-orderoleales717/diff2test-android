@@ -36,6 +36,7 @@ Use this checklist before creating the first `1.0.0` release.
   - SharedFlow event emission
   - validation-heavy flows
 - [ ] `./gradlew -p fixtures/sample-app :app:test` passes on CI
+- [ ] `./scripts/verify_fixture_generation.sh` passes on CI
 
 ## Release Operations
 

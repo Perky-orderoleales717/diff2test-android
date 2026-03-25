@@ -33,5 +33,8 @@ jobs:
       - name: Verify fixture sample app
         run: ./gradlew -p fixtures/sample-app :app:test
 
+      - name: Smoke generated fixture tests
+        run: ./scripts/verify_fixture_generation.sh
+
       - name: Build CLI distribution
         run: ./gradlew :apps:cli:distZip
