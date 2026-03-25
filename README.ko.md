@@ -27,7 +27,7 @@
   <img src="./docs/assets/readme-hero.png" alt="d2t workflow banner" width="960">
 </p>
 
-> 프리뷰 빌드입니다. 현재 CLI는 소스 실행, 릴리스 ZIP, Homebrew 기준으로 사용할 수 있으며, MCP 앱은 아직 transport가 연결된 정식 서버가 아닙니다.
+> 프리뷰 빌드입니다. 현재 CLI는 소스 실행, 릴리스 ZIP, Homebrew 기준으로 사용할 수 있습니다. 1.0 목표는 Android ViewModel local unit test 생성과 검증에 집중한 CLI이며, MCP 앱은 여전히 transport가 연결되지 않은 experimental 카탈로그 단계입니다.
 
 `diff2test-android`는 코드 diff를 기반으로 Android ViewModel 테스트를 생성하는 Kotlin 기반 CLI 프로젝트입니다.
 
@@ -35,7 +35,7 @@
 
 - CLI는 소스 실행 또는 릴리스 ZIP 기준으로 사용하실 수 있습니다.
 - macOS에서는 Homebrew 설치 경로를 가장 권장합니다.
-- MCP 앱은 아직 transport가 연결된 정식 서버가 아니라 카탈로그 스캐폴딩 단계입니다.
+- MCP 앱은 아직 transport가 연결된 정식 서버가 아니라 experimental 카탈로그 스캐폴딩 단계입니다.
 
 ## 프로젝트가 하는 일
 
@@ -52,6 +52,34 @@
 - `modules/*`: 핵심 엔진 모듈입니다.
 - `apps/cli`: 로컬 실행용 CLI 앱입니다.
 - `apps/mcp-server`: MCP 카탈로그 스캐폴딩입니다.
+
+## 1.0 방향
+
+1.0에서는 범위를 아래처럼 좁게 유지하는 것이 맞습니다.
+
+- diff 기반 Android ViewModel local unit test 생성과 검증용 CLI
+- 사용자가 직접 관리하는 API 키와 Responses-compatible AI endpoint
+- 릴리스 ZIP과 Homebrew 배포
+
+현재 1.0 준비 항목은 [`docs/roadmap-1.0.md`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/docs/roadmap-1.0.md)에 정리되어 있습니다.
+
+## 현재 지원하는 범위
+
+- 현재 git working tree 기준 ViewModel diff 감지
+- 변경된 ViewModel에 대한 시나리오 중심 테스트 계획 생성
+- local unit test 후보 코드 생성
+- 생성된 테스트 대상 Gradle 검증
+- `d2t init`, `d2t doctor` 기반 사용자 설정
+- Homebrew와 릴리스 ZIP 배포
+
+## 1.0에 아직 포함하지 않는 범위
+
+- transport가 연결된 정식 MCP 서버
+- instrumented `androidTest` 자동 생성
+- Compose UI test 생성
+- native Anthropic `messages` transport
+- end-to-end repair 루프
+- primary path 기준의 비휴리스틱 Kotlin 정밀 분석
 
 ## 설치 방법
 
@@ -101,6 +129,8 @@ d2t verify
 ```
 
 소스에서 직접 실행하는 경우에는 `d2t` 대신 `./d2t`를 사용해주세요.
+
+현재 analyzer가 PSI나 symbol resolution 대신 heuristic source inspection을 쓰는 경우, 관련 명령은 그 경고를 CLI에 그대로 출력합니다.
 
 ## AI 설정
 
@@ -202,7 +232,7 @@ apps/cli/build/distributions/d2t.zip
 
 현재는 아래 항목이 아직 제한되거나 미구현 상태입니다.
 
-- Kotlin PSI 또는 symbol resolution 기반의 정밀 분석
+- 1.0 수준의 Kotlin PSI 또는 symbol resolution 기반 정밀 분석
 - Responses-compatible 외의 AI transport
 - native Anthropic `messages` transport
 - repair 루프의 end-to-end 구현

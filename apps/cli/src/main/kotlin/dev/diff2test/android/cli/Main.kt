@@ -95,11 +95,13 @@ private fun runPlan(target: String?) {
     val analysis = resolveAnalysis(target)
     val plan = createPlan(analysis)
     println(renderPlan(plan))
+    printAnalysisWarnings(analysis)
 }
 
 private fun runGenerate(options: GenerateOptions) {
     val analysis = resolveAnalysis(options.target)
     val generator = createGenerator(options.aiPreference, options.model, options.strictAi)
+    printAnalysisWarnings(analysis)
     val bundle = createBundle(analysis, generator)
 
     if (options.write) {
@@ -117,8 +119,9 @@ private fun runAuto(options: AutoOptions) {
     val generator = createGenerator(options.aiPreference, options.model, options.strictAi)
 
     analyses.forEach { analysis ->
-        val bundle = createBundle(analysis, generator)
         println("Generating tests for ${analysis.filePath}")
+        printAnalysisWarnings(analysis)
+        val bundle = createBundle(analysis, generator)
         writeGeneratedFiles(bundle, analysis.filePath, outputRootOverride = null)
         println()
     }
@@ -156,6 +159,7 @@ private fun runVerify(task: String?) {
         val policy = DefaultPolicyEngine().evaluate(plan, result, repairAttempts = 0)
 
         println("Target: ${target.filePath}")
+        printAnalysisWarnings(analysis)
         println("Command: ${result.command.joinToString(" ")}")
         println("Exit: ${result.exitCode}")
         println("Status: ${result.status}")
@@ -460,22 +464,50 @@ private fun createGenerator(
     }
 }
 
+private fun printAnalysisWarnings(analysis: ViewModelAnalysis) {
+    renderAnalysisWarnings(analysis)?.let(::println)
+}
+
+internal fun renderAnalysisWarnings(analysis: ViewModelAnalysis): String? {
+    if (analysis.notes.isEmpty()) {
+        return null
+    }
+
+    return buildString {
+        appendLine("Analysis warnings:")
+        analysis.notes.distinct().forEach { note ->
+            appendLine("- $note")
+        }
+    }.trimEnd()
+}
+
 private fun printHelp() {
-    println("d2t commands:")
-    println("  init [--force]")
-    println("  doctor")
-    println("  scan")
-    println("  plan [path-to-viewmodel]")
-    println("  generate [path-to-viewmodel] [--write] [--output-root path] [--ai|--no-ai] [--strict-ai] [--model model-name]")
-    println("  auto [--ai|--no-ai] [--strict-ai] [--model model-name]")
-    println("  verify [gradle-task]")
-    println("Config:")
-    println("  ~/.config/d2t/config.toml")
-    println("Legacy env fallback:")
-    println("  D2T_AI_AUTH_TOKEN / LLM_API_KEY / ANTHROPIC_AUTH_TOKEN / OPENAI_API_KEY")
-    println("  D2T_AI_MODEL / STRIX_LLM / ANTHROPIC_MODEL / OPENAI_MODEL")
-    println("  D2T_AI_BASE_URL / LLM_API_BASE / ANTHROPIC_BASE_URL / OPENAI_BASE_URL")
-    println("  D2T_REASONING_EFFORT / STRIX_RESONING_EFFORT / OPENAI_REASONING_EFFORT")
-    println("  D2T_CONNECT_TIMEOUT_SECONDS / LLM_CONNECT_TIMEOUT_SECONDS / OPENAI_CONNECT_TIMEOUT_SECONDS")
-    println("  D2T_REQUEST_TIMEOUT_SECONDS / LLM_REQUEST_TIMEOUT_SECONDS / OPENAI_REQUEST_TIMEOUT_SECONDS")
+    println(renderHelpText())
+}
+
+internal fun renderHelpText(): String {
+    return buildString {
+        appendLine("d2t commands:")
+        appendLine("  init [--force]")
+        appendLine("  doctor")
+        appendLine("  scan")
+        appendLine("  plan [path-to-viewmodel]")
+        appendLine("  generate [path-to-viewmodel] [--write] [--output-root path] [--ai|--no-ai] [--strict-ai] [--model model-name]")
+        appendLine("  auto [--ai|--no-ai] [--strict-ai] [--model model-name]")
+        appendLine("  verify [gradle-task]")
+        appendLine("Scope:")
+        appendLine("  1.0 target: CLI for diff-driven Android ViewModel local unit test generation and verification")
+        appendLine("  MCP app is experimental and currently prints a catalog only")
+        appendLine("AI:")
+        appendLine("  Responses-compatible endpoints only")
+        appendLine("Config:")
+        appendLine("  ~/.config/d2t/config.toml")
+        appendLine("Legacy env fallback:")
+        appendLine("  D2T_AI_AUTH_TOKEN / LLM_API_KEY / ANTHROPIC_AUTH_TOKEN / OPENAI_API_KEY")
+        appendLine("  D2T_AI_MODEL / STRIX_LLM / ANTHROPIC_MODEL / OPENAI_MODEL")
+        appendLine("  D2T_AI_BASE_URL / LLM_API_BASE / ANTHROPIC_BASE_URL / OPENAI_BASE_URL")
+        appendLine("  D2T_REASONING_EFFORT / STRIX_RESONING_EFFORT / OPENAI_REASONING_EFFORT")
+        appendLine("  D2T_CONNECT_TIMEOUT_SECONDS / LLM_CONNECT_TIMEOUT_SECONDS / OPENAI_CONNECT_TIMEOUT_SECONDS")
+        appendLine("  D2T_REQUEST_TIMEOUT_SECONDS / LLM_REQUEST_TIMEOUT_SECONDS / OPENAI_REQUEST_TIMEOUT_SECONDS")
+    }.trimEnd()
 }

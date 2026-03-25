@@ -27,7 +27,7 @@
   <img src="./docs/assets/readme-hero.png" alt="d2t workflow banner" width="960">
 </p>
 
-> Preview build: the CLI is usable today from source, a release ZIP, or Homebrew. The MCP app is still a catalog scaffold, not a transport-bound MCP server.
+> Preview build: the CLI is usable today from source, a release ZIP, or Homebrew. The 1.0 target is a CLI-only release for Android ViewModel local unit test generation and verification. The MCP app remains experimental and is not a transport-bound server.
 
 `diff2test-android` is a Kotlin-based CLI for diff-driven Android ViewModel test generation.
 
@@ -35,7 +35,7 @@ It is currently best understood as a developer preview:
 
 - The CLI is usable today from source or a release ZIP.
 - Homebrew distribution is the recommended macOS install path.
-- The MCP app is still a catalog scaffold, not a transport-bound MCP server.
+- The MCP app is still an experimental catalog scaffold, not a transport-bound MCP server.
 
 ## What It Does
 
@@ -52,6 +52,34 @@ The repository is organized into three layers:
 - engine modules under `modules/*`
 - a local CLI app under `apps/cli`
 - an MCP-facing catalog scaffold under `apps/mcp-server`
+
+## 1.0 Direction
+
+The 1.0 promise should stay narrow:
+
+- CLI for diff-driven Android ViewModel local unit test generation and verification
+- bring-your-own API key with Responses-compatible AI endpoints
+- release ZIP and Homebrew distribution
+
+The current roadmap for that work lives in [`docs/roadmap-1.0.md`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/docs/roadmap-1.0.md).
+
+## Supported Today
+
+- diff-based ViewModel detection from the current git working tree
+- scenario-first planning for changed ViewModels
+- generated local unit test candidates
+- Gradle verification of generated test targets
+- user-owned AI configuration via `d2t init` and `d2t doctor`
+- Homebrew and release ZIP distribution
+
+## Not In 1.0 Yet
+
+- transport-bound MCP server behavior
+- instrumented `androidTest` generation
+- Compose UI test generation
+- native Anthropic `messages` transport
+- end-to-end automatic repair loop
+- non-heuristic Kotlin analysis for the primary path
 
 ## Install
 
@@ -101,6 +129,8 @@ d2t verify
 ```
 
 If you are running from source instead of Homebrew, use `./d2t` instead of `d2t`.
+
+Commands that rely on the current analyzer surface explicit analysis warnings when they are using heuristic source inspection instead of PSI or symbol-backed analysis.
 
 ## AI Configuration
 
@@ -198,11 +228,11 @@ apps/cli/build/distributions/d2t.zip
 
 ## Current Limitations
 
-- The Kotlin analyzer is still heuristic and should be replaced with PSI or symbol resolution.
+- The Kotlin analyzer is still heuristic and should be replaced with PSI or symbol resolution for 1.0.
 - AI generation currently supports Responses-compatible endpoints only.
 - Native Anthropic `messages` transport is not implemented yet.
 - The repair loop is not implemented end-to-end yet.
-- The MCP app is not yet a real transport-bound server.
+- The MCP app is experimental and not yet a real transport-bound server.
 
 When `--ai` is explicitly enabled, AI generation now fails closed instead of silently pretending success through heuristic fallback. Use `auto` without `--ai` only if you want fallback behavior.
 
