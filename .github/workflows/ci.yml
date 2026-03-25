@@ -27,6 +27,9 @@ jobs:
       - name: Execute Gradle test suite
         run: ./gradlew test
 
+      - name: Verify release version resolver
+        run: python3 -m unittest discover -s scripts/tests
+
       - name: Verify fixture sample app
         run: ./gradlew -p fixtures/sample-app :app:test
 

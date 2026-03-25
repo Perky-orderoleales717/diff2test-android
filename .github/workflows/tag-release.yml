@@ -38,11 +38,9 @@ jobs:
           fi
 
           LATEST_TAG="$(git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || echo 'v0.0.0')"
-          git log --format=%B "${LATEST_TAG}..HEAD" > /tmp/d2t-release-commits.txt
 
           python3 scripts/next_release_version.py \
             --latest-tag "${LATEST_TAG}" \
-            --commits-file /tmp/d2t-release-commits.txt \
             --version-file build.gradle.kts \
             --github-output "$GITHUB_OUTPUT"
 
@@ -85,9 +83,6 @@ jobs:
               echo "- Result: skipped"
               echo "- Reason: ${{ steps.version.outputs.reason }}"
             else
-              if [ -n "${{ steps.version.outputs.bump }}" ]; then
-                echo "- Bump: \`${{ steps.version.outputs.bump }}\`"
-              fi
               echo "- Source: \`${{ steps.version.outputs.source }}\`"
               echo "- Next tag: \`${{ steps.version.outputs.next_tag }}\`"
               echo "- Release workflow: dispatched"
