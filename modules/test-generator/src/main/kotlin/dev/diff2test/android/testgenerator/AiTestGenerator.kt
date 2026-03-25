@@ -31,6 +31,11 @@ data class ResponsesApiConfig(
     val requestTimeoutSeconds: Long = 180,
 )
 
+enum class AiFailureMode {
+    FALLBACK_TO_HEURISTIC,
+    FAIL_CLOSED,
+}
+
 fun responsesApiConfigFromEnvironment(modelOverride: String? = null): ResponsesApiConfig? {
     return responsesApiConfigFromEnvironment(
         environment = System.getenv(),
@@ -108,6 +113,7 @@ internal fun responsesApiConfigFromEnvironment(
 class ResponsesApiTestGenerator(
     private val config: ResponsesApiConfig,
     private val fallback: TestGenerator = KotlinUnitTestGenerator(),
+    private val failureMode: AiFailureMode = AiFailureMode.FALLBACK_TO_HEURISTIC,
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(config.connectTimeoutSeconds))
         .build(),
@@ -134,6 +140,12 @@ class ResponsesApiTestGenerator(
                 warnings = payload.warnings,
             )
         } catch (error: Exception) {
+            if (failureMode == AiFailureMode.FAIL_CLOSED) {
+                throw IllegalStateException(
+                    "AI generation failed: ${error.message ?: error::class.simpleName}",
+                    error,
+                )
+            }
             val fallbackBundle = fallback.generate(plan, context, analysis)
             fallbackBundle.copy(
                 warnings = listOf(

@@ -97,6 +97,7 @@ cd diff2test-android
 d2t init
 d2t doctor
 d2t auto --ai
+d2t verify
 ```
 
 소스에서 직접 실행하는 경우에는 `d2t` 대신 `./d2t`를 사용해주세요.
@@ -166,10 +167,12 @@ d2t init [--force]
 d2t doctor
 d2t scan
 d2t plan path/to/SomeViewModel.kt
-d2t generate path/to/SomeViewModel.kt --write [--ai|--no-ai]
-d2t auto [--ai|--no-ai] [--model model-name]
+d2t generate path/to/SomeViewModel.kt --write [--ai|--no-ai] [--strict-ai]
+d2t auto [--ai|--no-ai] [--strict-ai] [--model model-name]
 d2t verify :module:testTask
 ```
+
+명시적인 Gradle task 없이 `verify`를 실행하면, 현재 변경된 ViewModel에 대해 생성된 테스트 파일을 기본 검증 대상으로 사용합니다.
 
 ## Homebrew 배포 경로
 
@@ -202,6 +205,8 @@ apps/cli/build/distributions/d2t.zip
 - native Anthropic `messages` transport
 - repair 루프의 end-to-end 구현
 - transport가 연결된 정식 MCP 서버
+
+또한 `--ai`를 명시적으로 사용한 경우에는 AI 생성 실패를 heuristic fallback으로 숨기지 않고 실패로 처리합니다. fallback 동작이 필요하면 `--ai` 없이 `auto` 경로를 사용해주세요.
 
 즉 현재는 안정화된 제품 릴리스라기보다 개발자용 preview에 가깝습니다.
 
