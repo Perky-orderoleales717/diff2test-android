@@ -181,6 +181,7 @@ d2t verify :module:testTask
 - Gradle 배포 task: `./gradlew :apps:cli:distZip`
 - Homebrew formula 템플릿: [packaging/homebrew/d2t.rb](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/packaging/homebrew/d2t.rb)
 - 배포 가이드: [docs/homebrew-release.md](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/docs/homebrew-release.md)
+- 태그 기반 릴리스 자동화 workflow: [`.github/workflows/release.yml`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/.github/workflows/release.yml)
 
 `distZip`은 실행 가능한 CLI 묶음을 ZIP으로 만드는 Gradle task입니다.
 
