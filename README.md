@@ -181,6 +181,7 @@ This repository already includes:
 - a Gradle distribution task: `./gradlew :apps:cli:distZip`
 - a Homebrew formula template: [`packaging/homebrew/d2t.rb`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/packaging/homebrew/d2t.rb)
 - a release guide: [`docs/homebrew-release.md`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/docs/homebrew-release.md)
+- an automatic tag workflow for `main`: [`.github/workflows/tag-release.yml`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/.github/workflows/tag-release.yml)
 - a release automation workflow for tagged builds: [`.github/workflows/release.yml`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/.github/workflows/release.yml)
 
 `distZip` creates a runnable CLI bundle that contains:
