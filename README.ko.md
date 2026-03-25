@@ -23,6 +23,10 @@
   </p>
 </div>
 
+<p align="center">
+  <img src="./docs/assets/readme-hero.png" alt="d2t workflow banner" width="960">
+</p>
+
 > 프리뷰 빌드입니다. 현재 CLI는 소스 실행, 릴리스 ZIP, Homebrew 기준으로 사용할 수 있으며, MCP 앱은 아직 transport가 연결된 정식 서버가 아닙니다.
 
 `diff2test-android`는 코드 diff를 기반으로 Android ViewModel 테스트를 생성하는 Kotlin 기반 CLI 프로젝트입니다.

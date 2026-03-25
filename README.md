@@ -23,6 +23,10 @@
   </p>
 </div>
 
+<p align="center">
+  <img src="./docs/assets/readme-hero.png" alt="d2t workflow banner" width="960">
+</p>
+
 > Preview build: the CLI is usable today from source, a release ZIP, or Homebrew. The MCP app is still a catalog scaffold, not a transport-bound MCP server.
 
 `diff2test-android` is a Kotlin-based CLI for diff-driven Android ViewModel test generation.
