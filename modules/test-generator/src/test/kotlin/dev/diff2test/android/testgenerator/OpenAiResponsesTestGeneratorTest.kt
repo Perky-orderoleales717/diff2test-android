@@ -134,6 +134,28 @@ class OpenAiResponsesTestGeneratorTest {
     }
 
     @Test
+    fun `anthropic generator sends native headers to messages endpoint`() {
+        val capture = RequestCapture()
+        val generator = AnthropicMessagesTestGenerator(
+            config = AnthropicMessagesConfig(
+                apiKey = "sk-ant",
+                model = "claude-sonnet-4-5",
+                baseUrl = "https://api.anthropic.com/v1",
+            ),
+            httpClient = capturingHttpClient(capture, 200, anthropicResponseBody()),
+        )
+
+        val bundle = generator.generate(plan(), context(), analysis())
+
+        assertContains(bundle.files.single().content, "class SignUpViewModelGeneratedTest")
+        val request = assertNotNull(capture.request)
+        assertEquals("https://api.anthropic.com/v1/messages", request.uri().toString())
+        assertEquals("sk-ant", request.headers().firstValue("x-api-key").orElse(null))
+        assertEquals("2023-06-01", request.headers().firstValue("anthropic-version").orElse(null))
+        assertEquals("application/json", request.headers().firstValue("Accept").orElse(null))
+    }
+
+    @Test
     fun `extracts structured payload from chat completions response body`() {
         val responseBody = """
             {
@@ -690,6 +712,17 @@ class OpenAiResponsesTestGeneratorTest {
                   }
                 ]
               }
+            }
+          ]
+        }
+    """.trimIndent()
+
+    private fun anthropicResponseBody(): String = """
+        {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"content\":\"package com.example.auth\\n\\nclass SignUpViewModelGeneratedTest\",\"warnings\":[]}"
             }
           ]
         }
