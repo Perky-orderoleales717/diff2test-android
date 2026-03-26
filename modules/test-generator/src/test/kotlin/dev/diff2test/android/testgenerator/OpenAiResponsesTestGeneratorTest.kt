@@ -26,9 +26,10 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLParameters
 import javax.net.ssl.SSLSession
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class OpenAiResponsesTestGeneratorTest {
@@ -199,6 +200,30 @@ class OpenAiResponsesTestGeneratorTest {
             payload.content,
         )
         assertEquals(listOf("gemini"), payload.warnings)
+    }
+
+    @Test
+    fun `gemini generator sends native header to generate content endpoint`() {
+        val capture = RequestCapture()
+        val generator = GeminiGenerateContentTestGenerator(
+            config = GeminiGenerateContentConfig(
+                apiKey = "sk-gem",
+                model = "gemini-2.5-pro",
+                baseUrl = "https://generativelanguage.googleapis.com/v1beta",
+            ),
+            httpClient = capturingHttpClient(capture, 200, geminiResponseBody()),
+        )
+
+        val bundle = generator.generate(plan(), context(), analysis())
+
+        assertContains(bundle.files.single().content, "class SignUpViewModelGeneratedTest")
+        val request = assertNotNull(capture.request)
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
+            request.uri().toString(),
+        )
+        assertEquals("sk-gem", request.headers().firstValue("x-goog-api-key").orElse(null))
+        assertEquals("application/json", request.headers().firstValue("Accept").orElse(null))
     }
 
     @Test
@@ -588,7 +613,19 @@ class OpenAiResponsesTestGeneratorTest {
         )
     }
 
+    private data class RequestCapture(
+        var request: HttpRequest? = null,
+    )
+
     private fun fakeHttpClient(statusCode: Int, body: String): HttpClient {
+        return capturingHttpClient(RequestCapture(), statusCode, body)
+    }
+
+    private fun capturingHttpClient(
+        capture: RequestCapture,
+        statusCode: Int,
+        body: String,
+    ): HttpClient {
         return object : HttpClient() {
             override fun cookieHandler(): Optional<CookieHandler> = Optional.empty()
             override fun connectTimeout(): Optional<Duration> = Optional.empty()
@@ -603,8 +640,13 @@ class OpenAiResponsesTestGeneratorTest {
                 request: HttpRequest?,
                 responseBodyHandler: HttpResponse.BodyHandler<T>?,
             ): HttpResponse<T> {
+                capture.request = request
                 @Suppress("UNCHECKED_CAST")
-                return fakeResponse(statusCode, body) as HttpResponse<T>
+                return fakeResponse(
+                    statusCode = statusCode,
+                    body = body,
+                    uri = request?.uri()?.toString() ?: "http://127.0.0.1:12345/responses",
+                ) as HttpResponse<T>
             }
 
             override fun <T : Any?> sendAsync(
@@ -624,16 +666,32 @@ class OpenAiResponsesTestGeneratorTest {
         }
     }
 
-    private fun fakeResponse(statusCode: Int, body: String): HttpResponse<String> {
+    private fun fakeResponse(statusCode: Int, body: String, uri: String): HttpResponse<String> {
         return object : HttpResponse<String> {
             override fun statusCode(): Int = statusCode
-            override fun request(): HttpRequest = HttpRequest.newBuilder().uri(URI.create("http://127.0.0.1:12345/responses")).build()
+            override fun request(): HttpRequest = HttpRequest.newBuilder().uri(URI.create(uri)).build()
             override fun previousResponse(): Optional<HttpResponse<String>> = Optional.empty()
             override fun headers(): HttpHeaders = HttpHeaders.of(emptyMap()) { _, _ -> true }
             override fun body(): String = body
             override fun sslSession(): Optional<SSLSession> = Optional.empty()
-            override fun uri(): URI = URI.create("http://127.0.0.1:12345/responses")
+            override fun uri(): URI = URI.create(uri)
             override fun version(): HttpClient.Version = HttpClient.Version.HTTP_1_1
         }
     }
+
+    private fun geminiResponseBody(): String = """
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "{\"content\":\"package com.example.auth\\n\\nclass SignUpViewModelGeneratedTest\",\"warnings\":[]}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+    """.trimIndent()
 }
