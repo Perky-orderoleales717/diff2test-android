@@ -71,8 +71,8 @@ class GeneratedTestQualityGate {
             issues += "${file.relativePath}: using cancel() to finish coroutine work is not allowed."
         }
 
-        if (DETACHED_TEST_DISPATCHER_PATTERN.containsMatchIn(content)) {
-            issues += "${file.relativePath}: StandardTestDispatcher() must be bound to runTest via testScheduler."
+        detachedDispatcherNames(content).forEach { dispatcherName ->
+            issues += "${file.relativePath}: StandardTestDispatcher() must be bound to runTest via testScheduler or used as runTest($dispatcherName)."
         }
 
         val testBlocks = extractTestBlocks(content)
@@ -99,10 +99,33 @@ private val TODO_COMMENT_PATTERN = Regex("""(?m)^\s*//\s*TODO:|(?m)^\s*/\*\s*TOD
 private val MOCKING_PATTERN = Regex("""\b(io\.mockk|MockK\b|mockk\(|every\s*\{|coEvery\s*\{|Mockito\b)""")
 private val STATIC_MOCKING_PATTERN = Regex("""\bmockkStatic\s*\(""")
 private val CANCEL_PATTERN = Regex("""\.\s*cancel\s*\(""")
-private val DETACHED_TEST_DISPATCHER_PATTERN = Regex(
+private val CLASS_LEVEL_TEST_DISPATCHER_PATTERN = Regex(
     """(?m)^\s*(private\s+)?val\s+\w+\s*=\s*StandardTestDispatcher\(\)\s*$""",
 )
 private val ASSERTION_PATTERN = Regex(
     """\b(assertEquals|assertTrue|assertFalse|assertNull|assertNotNull|assertFails|assertContentEquals|assertContains|assertIs)\s*\(""",
 )
 private val TEST_BLOCK_PATTERN = Regex("""@Test[\s\S]*?(?=\n\s*@Test|\n})""")
+
+private fun detachedDispatcherNames(content: String): List<String> {
+    return CLASS_LEVEL_TEST_DISPATCHER_PATTERN.findAll(content)
+        .mapNotNull { match ->
+            val line = match.value
+            val dispatcherName = line.substringAfter("val ").substringBefore('=').trim()
+            if (dispatcherName.isBlank()) {
+                null
+            } else if (isDispatcherBoundToRunTest(content, dispatcherName)) {
+                null
+            } else {
+                dispatcherName
+            }
+        }
+        .toList()
+}
+
+private fun isDispatcherBoundToRunTest(content: String, dispatcherName: String): Boolean {
+    val escaped = Regex.escape(dispatcherName)
+    val directRunTestPattern = Regex("""runTest\s*\(\s*$escaped\s*\)""")
+    val namedRunTestPattern = Regex("""runTest\s*\(\s*context\s*=\s*$escaped\s*\)""")
+    return directRunTestPattern.containsMatchIn(content) || namedRunTestPattern.containsMatchIn(content)
+}
