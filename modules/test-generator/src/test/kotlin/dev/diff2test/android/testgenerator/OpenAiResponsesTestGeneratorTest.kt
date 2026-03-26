@@ -676,6 +676,50 @@ class OpenAiResponsesTestGeneratorTest {
         assertContains(bundle.warnings.joinToString("\n"), "AI generation was skipped")
     }
 
+    @Test
+    fun `bypasses ai for singleton-backed viewmodels even when coroutine test support exists`() {
+        val analysis = ViewModelAnalysis(
+            className = "NutritionChatViewModel",
+            packageName = "net.ifmain.androiddummy.chatbot.ui",
+            filePath = findRepoRoot().resolve("fixtures/sample-app/app/src/main/java/com/example/auth/LoginViewModel.kt"),
+            publicMethods = listOf(
+                dev.diff2test.android.core.TargetMethod(
+                    name = "sendMessage",
+                    signature = "fun sendMessage()",
+                    body = "ChatbotService.api.sendMessage(request)",
+                    mutatesState = true,
+                ),
+            ),
+        )
+        val generator = AnthropicMessagesTestGenerator(
+            config = AnthropicMessagesConfig(
+                apiKey = "sk-ant",
+                model = "claude-sonnet-4-5",
+                baseUrl = "https://api.anthropic.com/v1",
+            ),
+            httpClient = fakeHttpClient(statusCode = 500, body = "should not be called"),
+        )
+
+        val bundle = generator.generate(
+            plan = TestPlan(
+                targetClass = "NutritionChatViewModel",
+                targetMethods = listOf("sendMessage"),
+                testType = TestType.LOCAL_UNIT,
+                scenarios = emptyList(),
+                requiredFakes = emptyList(),
+                assertions = emptyList(),
+                riskLevel = RiskLevel.LOW,
+            ),
+            context = TestContext(
+                moduleName = "app",
+                styleGuide = StyleGuide(assertionStyle = "junit4", coroutineEntryPoint = "runTest"),
+            ),
+            analysis = analysis,
+        )
+
+        assertContains(bundle.warnings.joinToString("\n"), "AI generation was skipped because the ViewModel directly accesses global singleton collaborators.")
+    }
+
     private fun findRepoRoot(): Path {
         var current: Path? = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
 

@@ -1108,14 +1108,14 @@ private fun maybeBypassAi(
     } || runCatching {
         Files.exists(analysis.filePath) && DIRECT_SINGLETON_ACCESS_PATTERN.containsMatchIn(Files.readString(analysis.filePath))
     }.getOrDefault(false)
-    if (context.styleGuide.coroutineEntryPoint == "runTest" || !usesDirectSingleton) {
+    if (!usesDirectSingleton) {
         return null
     }
 
     val fallbackBundle = fallback.generate(plan, context, analysis)
     return fallbackBundle.copy(
         warnings = listOf(
-            "AI generation was skipped because the module does not declare kotlinx-coroutines-test and the ViewModel directly accesses global singleton collaborators. Heuristic generation was used instead.",
+            "AI generation was skipped because the ViewModel directly accesses global singleton collaborators. Heuristic generation was used instead.",
         ) + fallbackBundle.warnings,
     )
 }
