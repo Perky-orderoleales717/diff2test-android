@@ -1,18 +1,19 @@
 <div align="center">
   <h1>diff2test-android</h1>
   <p><strong>Diff-driven Android ViewModel test generation CLI</strong></p>
-  <p>Scan changed ViewModels, plan tests, generate candidate local unit tests, and verify them with Gradle.</p>
+  <p>Detect changed ViewModels, plan tests, generate candidate local unit tests, and verify them with Gradle.</p>
   <p>
     <a href="https://github.com/gay00ung/diff2test-android/stargazers">
       <img alt="GitHub stars" src="https://img.shields.io/github/stars/gay00ung/diff2test-android?style=flat-square">
     </a>
     <a href="https://github.com/gay00ung/diff2test-android/releases">
-      <img alt="Release ZIP" src="https://img.shields.io/badge/release-d2t.zip-2563eb?style=flat-square">
+      <img alt="Release" src="https://img.shields.io/github/v/release/gay00ung/diff2test-android?style=flat-square">
     </a>
     <a href="https://github.com/gay00ung/diff2test-android/releases">
       <img alt="Homebrew" src="https://img.shields.io/badge/install-Homebrew-fbbf24?style=flat-square&logo=homebrew">
     </a>
-    <img alt="Status Preview" src="https://img.shields.io/badge/status-preview-f97316?style=flat-square">
+    <img alt="CLI 1.0" src="https://img.shields.io/badge/cli-1.0.0-2563eb?style=flat-square">
+    <img alt="MCP experimental" src="https://img.shields.io/badge/mcp-experimental-f97316?style=flat-square">
     <img alt="Kotlin 1.9.25" src="https://img.shields.io/badge/kotlin-1.9.25-7f52ff?style=flat-square">
     <img alt="Java 17" src="https://img.shields.io/badge/java-17-437291?style=flat-square">
   </p>
@@ -27,67 +28,50 @@
   <img src="./docs/assets/readme-hero.png" alt="d2t workflow banner" width="960">
 </p>
 
-> Preview build: the CLI is usable today from source, a release ZIP, or Homebrew. The 1.0 target is a CLI-only release for Android ViewModel local unit test generation and verification. The MCP app remains experimental and is not a transport-bound server.
+> `d2t` 1.0 focuses on one thing: turning changed Android ViewModels into verifiable local unit tests. The CLI is the primary product. The MCP app remains experimental.
 
-`diff2test-android` is a Kotlin-based CLI for diff-driven Android ViewModel test generation.
+## Why d2t
 
-It is currently best understood as a developer preview:
+Most Android test generation tools fail in one of two ways:
 
-- The CLI is usable today from source or a release ZIP.
-- Homebrew distribution is the recommended macOS install path.
-- The MCP app is still an experimental catalog scaffold, not a transport-bound MCP server.
+- they ignore the actual code diff and generate too much
+- they generate code, but stop before verification
 
-## What It Does
+`d2t` is built around a narrower loop:
 
-Today the project focuses on a narrow workflow:
+1. detect changed `*ViewModel.kt` files from `git diff`
+2. analyze the changed ViewModel surface and collaborators
+3. build a scenario-first `TestPlan`
+4. generate candidate local unit tests
+5. verify those generated tests with Gradle
 
-- detect changed ViewModel files from `git diff`
-- analyze changed methods and collaborators
-- build a scenario-first `TestPlan`
-- generate candidate local unit tests
-- verify generated tests with Gradle
+That makes it useful as a developer workflow tool, not just a code dump generator.
 
-The repository is organized into three layers:
+## What 1.0 Includes
 
-- engine modules under `modules/*`
-- a local CLI app under `apps/cli`
-- an MCP-facing catalog scaffold under `apps/mcp-server`
+`d2t` 1.0 is intentionally narrow.
 
-## 1.0 Direction
+- Diff-driven Android ViewModel local unit test generation
+- Gradle-backed verification of generated tests
+- Bring-your-own API key support
+- OpenAI Responses API support
+- Anthropic Messages API support
+- Gemini GenerateContent API support
+- Custom `responses-compatible` endpoints
+- Custom `chat-completions` endpoints
+- Release ZIP and Homebrew distribution
 
-The 1.0 promise should stay narrow:
+## What 1.0 Does Not Promise
 
-- CLI for diff-driven Android ViewModel local unit test generation and verification
-- bring-your-own API key with OpenAI, Anthropic, Gemini, or Responses-compatible gateways
-- release ZIP and Homebrew distribution
-
-The current roadmap for that work lives in [`docs/roadmap-1.0.md`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/docs/roadmap-1.0.md), and the final release gate is tracked in [`docs/release-gate-1.0.md`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/docs/release-gate-1.0.md).
-
-## Supported Today
-
-- diff-based ViewModel detection from the current git working tree
-- scenario-first planning for changed ViewModels
-- generated local unit test candidates
-- Gradle verification of generated test targets
-- one bounded repair pass for common import and coroutine utility failures when `auto --repair` is enabled
-- user-owned AI configuration via `d2t init` and `d2t doctor`
-- Homebrew and release ZIP distribution
-
-## Not In 1.0 Yet
-
-- transport-bound MCP server behavior
-- instrumented `androidTest` generation
+- A transport-bound MCP server
+- Instrumented `androidTest` generation
 - Compose UI test generation
-- end-to-end automatic repair loop
-- non-heuristic Kotlin analysis for the primary path
+- Full end-to-end autonomous repair loops
+- Perfect external classpath symbol resolution in every Android build graph
 
 ## Install
 
-### Homebrew on macOS
-
-The recommended install path for macOS users is Homebrew.
-
-Direct install without tapping first:
+### Homebrew
 
 ```bash
 brew install gay00ung/diff2test-android/d2t
@@ -100,9 +84,9 @@ brew tap gay00ung/diff2test-android
 brew install d2t
 ```
 
-### Run from a Release ZIP
+### Release ZIP
 
-Download `d2t.zip` from the latest release and run:
+Download `d2t.zip` from the latest release:
 
 ```bash
 unzip d2t.zip
@@ -121,77 +105,81 @@ cd diff2test-android
 
 ## Quick Start
 
-```bash
-d2t init
-d2t doctor
-d2t auto --ai
-d2t verify
-```
-
-If you are running from source instead of Homebrew, use `./d2t` instead of `d2t`.
-
-`auto` now writes generated tests and verifies them by default. Add `--repair` if you want one bounded repair pass for common import and coroutine-test utility failures.
-Generated output must also pass the built-in quality gate, which rejects placeholder assertions and unresolved `TODO()` scaffolding.
-
-Commands that rely on the current analyzer surface explicit analysis warnings when compiler-backed symbol resolution is active, and when the analyzer had to fall back for unresolved external classpath symbols.
-
-## AI Configuration
-
-The CLI reads user-level configuration from:
-
-```bash
-~/.config/d2t/config.toml
-```
-
-Generate a starter config:
+### 1. Initialize config
 
 ```bash
 d2t init
 ```
 
-Inspect the current configuration:
-
-```bash
-d2t doctor
-```
-
-The config stores only the environment variable name for the API key, not the secret itself.
-
-Example for the official OpenAI Responses API:
-
-```toml
-[ai]
-enabled = true
-provider = "openai"
-protocol = "responses-compatible"
-api_key_env = "OPENAI_API_KEY"
-model = "gpt-5"
-base_url = "https://api.openai.com/v1"
-connect_timeout_seconds = 30
-request_timeout_seconds = 180
-```
-
-Example for a local or self-hosted Responses-compatible gateway:
+### 2. Point d2t at your AI provider
 
 ```toml
 [ai]
 enabled = true
 provider = "custom"
-protocol = "responses-compatible"
+protocol = "chat-completions"
 api_key_env = "LLM_API_KEY"
 model = "qwen3-coder-next-mlx"
-base_url = "http://127.0.0.1:12345"
-reasoning_effort = "high"
+base_url = "http://127.0.0.1:12345/v1"
 connect_timeout_seconds = 30
 request_timeout_seconds = 300
 ```
 
-Then load your shell environment and run:
+### 3. Confirm config
+
+```bash
+d2t doctor
+```
+
+### 4. Generate and verify tests for current changes
+
+```bash
+d2t auto --ai
+```
+
+If you are running from source, use `./d2t` instead of `d2t`.
+
+## Supported AI Protocols
+
+`d2t` stores only the environment variable name for the API key in `~/.config/d2t/config.toml`. Keep the secret itself in your shell environment.
+
+Supported provider/protocol combinations:
+
+- `provider = "openai"` with `protocol = "responses-compatible"`
+- `provider = "anthropic"` with `protocol = "anthropic-messages"`
+- `provider = "gemini"` with `protocol = "gemini-generate-content"`
+- `provider = "custom"` with `protocol = "responses-compatible"`
+- `provider = "custom"` with `protocol = "chat-completions"`
+
+Example:
 
 ```bash
 source ~/.zshrc
+d2t doctor
 d2t auto --ai
 ```
+
+## How It Works
+
+At a high level:
+
+```text
+git diff
+  -> changed ViewModel detection
+  -> ViewModel analysis
+  -> TestPlan generation
+  -> AI or deterministic code generation
+  -> quality gate
+  -> Gradle verification
+```
+
+Important implementation details:
+
+- `d2t` does not ask the model to guess from the entire repo blindly
+- the diff and the analyzed ViewModel surface narrow the generation scope first
+- generated tests must pass a built-in quality gate before verification
+- `auto` generates and verifies in one command
+- `--repair` enables one bounded repair pass for common import and coroutine-test utility issues
 
 ## Commands
 
@@ -205,55 +193,65 @@ d2t auto [--ai|--no-ai] [--strict-ai] [--model model-name] [--no-verify] [--repa
 d2t verify :module:testTask
 ```
 
-When you run `verify` without an explicit Gradle task, the CLI now verifies generated test files for the currently changed ViewModels.
+## Troubleshooting
 
-## Homebrew Packaging
+### `No changed ViewModel files were detected`
 
-This repository already includes:
+- make sure your current working tree actually contains a modified `*ViewModel.kt`
+- or pass an explicit file path to `plan` or `generate`
 
-- a Gradle distribution task: `./gradlew :apps:cli:distZip`
-- a Homebrew formula template: [`packaging/homebrew/d2t.rb`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/packaging/homebrew/d2t.rb)
-- a release guide: [`docs/homebrew-release.md`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/docs/homebrew-release.md)
-- an automatic tag workflow for `main`: [`.github/workflows/tag-release.yml`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/.github/workflows/tag-release.yml)
-- a release automation workflow for tagged builds: [`.github/workflows/release.yml`](/Users/shingayeong/Desktop/projects/gayoung/diff2test-android/.github/workflows/release.yml)
+### AI requests time out
 
-`distZip` creates a runnable CLI bundle that contains:
+- increase `request_timeout_seconds`
+- try a smaller or faster model
+- prefer `protocol = "chat-completions"` when your gateway handles that path more reliably
 
-- the `d2t` launcher
-- compiled jars
-- runtime dependencies
+### Generated tests fail the quality gate
 
-The generated archive is written under:
+- the generator produced code that `d2t` considers too fragile or incomplete
+- this is usually a generation-quality problem, not a Gradle problem
+- retry with a stronger model or add `--repair` when verification is enabled
+
+### Verification fails after generation
+
+- inspect the generated test under `src/test/kotlin/...GeneratedTest.kt`
+- run the printed Gradle verification command directly
+- if the failure is import or coroutine utility related, retry with `d2t auto --ai --repair`
+
+## Repository Layout
+
+- `apps/cli`: main CLI application
+- `apps/mcp-server`: experimental MCP-facing catalog scaffold
+- `modules/*`: engine modules
+- `prompts/*`: prompt templates and policies
+- `fixtures/*`: sample app and verification fixtures
+- `docs/*`: architecture and release docs
+
+## Release and Distribution
+
+This repository includes:
+
+- Homebrew packaging via [`packaging/homebrew/d2t.rb`](./packaging/homebrew/d2t.rb)
+- release automation via [`.github/workflows/release.yml`](./.github/workflows/release.yml)
+- tag automation via [`.github/workflows/tag-release.yml`](./.github/workflows/tag-release.yml)
+- distribution ZIP output via `./gradlew :apps:cli:distZip`
+
+The generated archive is written to:
 
 ```bash
 apps/cli/build/distributions/d2t.zip
 ```
 
-## Current Limitations
+## Product Boundaries
 
-- The Kotlin analyzer now uses compiler-backed symbol resolution for same-module Kotlin sources, but external dependency resolution can still fall back when module classpaths are incomplete.
-- AI generation supports the OpenAI Responses API, the Anthropic Messages API, the Gemini GenerateContent API, and Responses-compatible gateways.
-- Repair is still bounded and only covers common generated-test import or coroutine utility failures.
-- The MCP app is experimental and not yet a real transport-bound server.
+The CLI is the stable surface.
 
-When `--ai` is explicitly enabled, AI generation now fails closed instead of silently pretending success through heuristic fallback. Use `auto` without `--ai` only if you want fallback behavior.
+The MCP app is still experimental:
 
-## Legacy Environment Fallback
+- it is useful as a catalog scaffold
+- it is not yet positioned as a production transport-bound MCP server
 
-If no config file exists, the CLI still falls back to environment variables.
+For the current release gate and roadmap:
 
-- Auth: `D2T_AI_AUTH_TOKEN`, `LLM_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `OPENAI_API_KEY`
-- Model: `D2T_AI_MODEL`, `STRIX_LLM`, `ANTHROPIC_MODEL`, `OPENAI_MODEL`
-- Base URL: `D2T_AI_BASE_URL`, `LLM_API_BASE`, `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`
-- Reasoning: `D2T_REASONING_EFFORT`, `STRIX_RESONING_EFFORT`, `OPENAI_REASONING_EFFORT`
-- Connect timeout: `D2T_CONNECT_TIMEOUT_SECONDS`, `LLM_CONNECT_TIMEOUT_SECONDS`, `OPENAI_CONNECT_TIMEOUT_SECONDS`
-- Request timeout: `D2T_REQUEST_TIMEOUT_SECONDS`, `LLM_REQUEST_TIMEOUT_SECONDS`, `OPENAI_REQUEST_TIMEOUT_SECONDS`
-
-## Repository Layout
-
-- `apps/cli`: local command entry point
-- `apps/mcp-server`: MCP catalog scaffold
-- `modules/*`: engine modules
-- `prompts/*`: prompt and policy templates
-- `docs/*`: architecture and release docs
-- `fixtures/*`: sample app and verification fixtures
+- [`docs/release-gate-1.0.md`](./docs/release-gate-1.0.md)
+- [`docs/roadmap-1.0.md`](./docs/roadmap-1.0.md)
